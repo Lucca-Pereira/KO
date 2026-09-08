@@ -1,0 +1,7 @@
+# Normalise line endings; keep shell scripts LF so CI on Linux can run them.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.webp binary
+gradlew text eol=lf

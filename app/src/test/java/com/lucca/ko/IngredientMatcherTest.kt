@@ -1,0 +1,42 @@
+package com.lucca.ko
+
+import com.lucca.ko.domain.IngredientMatcher
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class IngredientMatcherTest {
+
+    @Test
+    fun normalize_stripsMeasuresDescriptorsAndPunctuation() {
+        assertEquals("olive oil", IngredientMatcher.normalize("2 tbsp extra virgin olive oil"))
+        assertEquals("chicken breast", IngredientMatcher.normalize("Chicken Breasts, diced"))
+        assertEquals("garlic", IngredientMatcher.normalize("3 cloves of garlic, minced"))
+        assertEquals("tomato", IngredientMatcher.normalize("Fresh tomatoes (chopped)"))
+    }
+
+    @Test
+    fun normalize_handlesEdgeCases() {
+        assertEquals("", IngredientMatcher.normalize("   "))
+        assertEquals("salt", IngredientMatcher.normalize("a pinch of salt"))
+    }
+
+    @Test
+    fun bestMatch_exactBeatsPartial() {
+        val pantry = listOf("onion", "red onion", "spring onion")
+        assertEquals("onion", IngredientMatcher.bestMatch("onion", pantry))
+    }
+
+    @Test
+    fun bestMatch_findsSubsetMatch() {
+        val pantry = listOf("olive oil", "plain flour", "chicken stock")
+        assertEquals("olive oil", IngredientMatcher.bestMatch(IngredientMatcher.normalize("olive oil"), pantry))
+        assertEquals("chicken stock", IngredientMatcher.bestMatch("chicken stock cube".let { IngredientMatcher.normalize(it) }, pantry))
+    }
+
+    @Test
+    fun bestMatch_returnsNullWhenUnrelated() {
+        val pantry = listOf("onion", "garlic", "rice")
+        assertNull(IngredientMatcher.bestMatch("saffron", pantry))
+    }
+}

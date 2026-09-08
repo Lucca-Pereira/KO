@@ -1,0 +1,90 @@
+package com.lucca.ko.ui.plan
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.lucca.ko.data.KitchenRepository
+import com.lucca.ko.data.db.MealSlot
+import com.lucca.ko.data.db.PlannedDish
+import com.lucca.ko.ui.koApp
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
+
+data class DayPlan(
+    val date: LocalDate,
+    val weekdayLabel: String,
+    val dateLabel: String,
+    val isToday: Boolean,
+    val dishesBySlot: List<Pair<MealSlot, List<PlannedDish>>>,
+)
+
+data class PlanUiState(
+    val weekStart: LocalDate = LocalDate.now(),
+    val rangeLabel: String = "",
+    val isCurrentWeek: Boolean = true,
+    val days: List<DayPlan> = emptyList(),
+)
+
+private fun mondayOf(date: LocalDate): LocalDate =
+    date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+private fun shortDate(date: LocalDate): String =
+    "${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())}"
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class PlanViewModel(private val repo: KitchenRepository) : ViewModel() {
+
+    private val weekStart = MutableStateFlow(mondayOf(LocalDate.now()))
+
+    val state = weekStart
+        .flatMapLatest { start ->
+            repo.weekPlan(start).map { planned -> buildState(start, planned) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanUiState())
+
+    private fun buildState(start: LocalDate, planned: List<PlannedDish>): PlanUiState {
+        val today = LocalDate.now()
+        val days = (0..6L).map { offset ->
+            val date = start.plusDays(offset)
+            val forDay = planned.filter { it.entry.date == date.toString() }
+            DayPlan(
+                date = date,
+                weekdayLabel = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                dateLabel = shortDate(date),
+                isToday = date == today,
+                dishesBySlot = MealSlot.entries
+                    .map { slot -> slot to forDay.filter { it.entry.slot == slot } }
+                    .filter { it.second.isNotEmpty() },
+            )
+        }
+        return PlanUiState(
+            weekStart = start,
+            rangeLabel = "${shortDate(start)} – ${shortDate(start.plusDays(6))}",
+            isCurrentWeek = start == mondayOf(today),
+            days = days,
+        )
+    }
+
+    fun nextWeek() { weekStart.value = weekStart.value.plusWeeks(1) }
+    fun prevWeek() { weekStart.value = weekStart.value.minusWeeks(1) }
+    fun goToday() { weekStart.value = mondayOf(LocalDate.now()) }
+
+    fun removeEntry(id: Long) = viewModelScope.launch { repo.removePlanEntry(id) }
+
+    companion object {
+        val Factory = viewModelFactory {
+            initializer { PlanViewModel(koApp.container.repository) }
+        }
+    }
+}
