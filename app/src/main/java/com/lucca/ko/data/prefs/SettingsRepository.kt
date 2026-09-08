@@ -12,8 +12,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+/** Default points at the standard Android emulator's host-loopback alias for
+ *  Ollama running on the developer machine (127.0.0.1:11434 on the host). */
+const val DEFAULT_OLLAMA_URL = "http://10.0.2.2:11434"
+
 data class AppSettings(
-    val ollamaBaseUrl: String = "",
+    val ollamaBaseUrl: String = DEFAULT_OLLAMA_URL,
     val ollamaModel: String = "qwen2.5-coder:14b",
     val suggestionCount: Int = 5,
 ) {
@@ -30,7 +34,7 @@ class SettingsRepository(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(
-            ollamaBaseUrl = p[Keys.baseUrl] ?: "",
+            ollamaBaseUrl = p[Keys.baseUrl] ?: DEFAULT_OLLAMA_URL,
             ollamaModel = p[Keys.model]?.takeIf { it.isNotBlank() } ?: "qwen2.5-coder:14b",
             suggestionCount = (p[Keys.count] ?: 5).coerceIn(1, 10),
         )

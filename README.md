@@ -31,12 +31,13 @@ ingredients, photos and source links come from TheMealDB.
    ```bash
    ollama pull llama3.1
    ```
-2. Make Ollama listen on the network, then restart it:
-   - macOS/Linux: `export OLLAMA_HOST=0.0.0.0` before `ollama serve`
-   - Windows: set an environment variable `OLLAMA_HOST` = `0.0.0.0`
-3. Find your computer's LAN IP (e.g. `192.168.1.20`).
-4. In the app: **Settings → Ollama server URL** = `http://192.168.1.20:11434`,
-   set the model name to what you pulled, and tap **Test connection**.
+2. Point the app at the server in **Settings → Ollama server URL**:
+   - **Android emulator:** `http://10.0.2.2:11434` (the pre-filled default –
+     `10.0.2.2` is the emulator's alias for the host's `127.0.0.1`).
+   - **Real phone:** start Ollama with `OLLAMA_HOST=0.0.0.0` (Windows: set it as an
+     environment variable and restart Ollama), find your computer's Wi-Fi IP
+     (`ipconfig` / `ip addr`), and use `http://<that-ip>:11434`.
+3. Set the model name to what you pulled and tap **Test connection**.
 
 If the bot is unreachable, suggestions fall back to TheMealDB matches for what is
 in your pantry, so the app still works offline-of-bot.

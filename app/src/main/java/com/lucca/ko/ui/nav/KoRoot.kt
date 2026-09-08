@@ -160,11 +160,8 @@ fun KoRoot() {
             composable(
                 route = "dish/{$ARG_DISH}",
                 arguments = listOf(navArgument(ARG_DISH) { type = NavType.LongType }),
-            ) { entry ->
-                DishScreen(
-                    dishId = entry.arguments?.getLong(ARG_DISH) ?: 0L,
-                    onBack = { navController.popBackStack() },
-                )
+            ) {
+                DishScreen(onBack = { navController.popBackStack() })
             }
         }
     }

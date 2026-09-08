@@ -87,12 +87,14 @@ fun SuggestScreen(
                 state.error != null -> EmptyState(title = "Couldn't get ideas", subtitle = state.error)
 
                 else -> {
-                    val result = state.result
+                    val note = state.result?.note
+                    val ideas = state.result?.ideas.orEmpty()
+                    val meals = state.result?.meals.orEmpty()
                     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                        if (result?.note != null) {
+                        if (note != null) {
                             item {
                                 Text(
-                                    result.note!!,
+                                    note,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
@@ -102,7 +104,7 @@ fun SuggestScreen(
                                 )
                             }
                         }
-                        if (!result?.ideas.isNullOrEmpty()) {
+                        if (ideas.isNotEmpty()) {
                             item {
                                 Text(
                                     "The bot suggested",
@@ -111,7 +113,7 @@ fun SuggestScreen(
                                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                                 )
                             }
-                            items(result!!.ideas, key = { "idea-" + it.dish }) { idea ->
+                            items(ideas, key = { "idea-" + it.dish }) { idea ->
                                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                                     Text(idea.dish, style = MaterialTheme.typography.bodyLarge)
                                     if (idea.reason.isNotBlank()) {
@@ -135,7 +137,6 @@ fun SuggestScreen(
                             )
                         }
 
-                        val meals = result?.meals.orEmpty()
                         if (meals.isEmpty()) {
                             item {
                                 EmptyState(
