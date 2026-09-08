@@ -12,3 +12,8 @@ captures/
 
 # Gradle / Android build output
 build/
+
+# Node (not part of this project; e.g. a stray `npm install`)
+node_modules/
+package.json
+package-lock.json
