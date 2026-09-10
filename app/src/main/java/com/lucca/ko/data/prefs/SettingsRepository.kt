@@ -3,11 +3,13 @@ package com.lucca.ko.data.prefs
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 
@@ -36,6 +38,15 @@ class SettingsRepository(private val context: Context) {
         val baseUrl = stringPreferencesKey("ollama_base_url")
         val model = stringPreferencesKey("ollama_model")
         val count = intPreferencesKey("suggestion_count")
+        val normalizationRepaired = booleanPreferencesKey("normalization_repaired_v2")
+    }
+
+    /** One-time flag: existing rows have had their normalizedName recomputed (v0.1.6). */
+    suspend fun isNormalizationRepaired(): Boolean =
+        context.dataStore.data.first()[Keys.normalizationRepaired] ?: false
+
+    suspend fun markNormalizationRepaired() {
+        context.dataStore.edit { it[Keys.normalizationRepaired] = true }
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->

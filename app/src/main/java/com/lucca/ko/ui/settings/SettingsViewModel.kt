@@ -33,6 +33,13 @@ sealed interface BackupState {
     data class Failed(val message: String) : BackupState
 }
 
+sealed interface TranslateState {
+    data object Idle : TranslateState
+    data object Running : TranslateState
+    data class Done(val message: String) : TranslateState
+    data class Failed(val message: String) : TranslateState
+}
+
 class SettingsViewModel(
     private val repo: KitchenRepository,
     private val settingsRepo: SettingsRepository,
@@ -54,6 +61,23 @@ class SettingsViewModel(
         repo.testOllama(baseUrl)
             .onSuccess { _test.value = TestState.Ok(it) }
             .onFailure { _test.value = TestState.Failed(it.message ?: "Connection failed") }
+    }
+
+    private val _translate = MutableStateFlow<TranslateState>(TranslateState.Idle)
+    val translate = _translate.asStateFlow()
+
+    fun translatePantry() = viewModelScope.launch {
+        _translate.value = TranslateState.Running
+        runCatching { repo.translatePantryToEnglish() }
+            .onSuccess { n ->
+                _translate.value = when {
+                    n > 0 -> TranslateState.Done("Translated $n pantry item(s) for recipe search.")
+                    else -> TranslateState.Failed(
+                        "Nothing translated — check the recipe bot connection above.",
+                    )
+                }
+            }
+            .onFailure { _translate.value = TranslateState.Failed(it.message ?: "Translation failed.") }
     }
 
     private val _backup = MutableStateFlow<BackupState>(BackupState.Idle)

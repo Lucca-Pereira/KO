@@ -10,10 +10,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,12 +42,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.BuildConfig
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val test by vm.test.collectAsStateWithLifecycle()
     val backup by vm.backup.collectAsStateWithLifecycle()
+    val translate by vm.translate.collectAsStateWithLifecycle()
 
     var url by remember { mutableStateOf(settings.ollamaBaseUrl) }
     var model by remember { mutableStateOf(settings.ollamaModel) }
@@ -142,10 +146,19 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
             }
             (test as? TestState.Ok)?.takeIf { it.models.isNotEmpty() }?.let { ok ->
                 Text(
-                    "Installed: " + ok.models.joinToString(", "),
+                    "Tap an installed model to use it:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ok.models.forEach { m ->
+                        FilterChip(
+                            selected = m == model,
+                            onClick = { model = m; vm.setModel(m) },
+                            label = { Text(m) },
+                        )
+                    }
+                }
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -157,6 +170,41 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 valueRange = 3f..10f,
                 steps = 6,
             )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            Text("Recipe search language", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Recipes come from TheMealDB, which is English-only. If your pantry is in " +
+                    "another language, the bot can fill in an English name for each item so " +
+                    "recipe search and the have/need colours work. Re-run it after adding items.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = { vm.translatePantry() },
+                enabled = translate != TranslateState.Running,
+            ) { Text("Translate pantry to English") }
+            when (val tr = translate) {
+                TranslateState.Running -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.padding(4.dp))
+                    Text("Asking the bot…", style = MaterialTheme.typography.bodySmall)
+                }
+                is TranslateState.Done -> Text(
+                    tr.message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is TranslateState.Failed -> Text(
+                    tr.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TranslateState.Idle -> {}
+            }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 

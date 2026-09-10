@@ -31,6 +31,9 @@ data class PantryItem(
     val status: StockStatus = StockStatus.IN_STOCK,
     val quantity: String? = null,
     val note: String? = null,
+    /** English name for recipe search / matching, e.g. "mantequilla" -> "butter".
+     *  Null until the user runs "Translate pantry" in Settings. */
+    val searchName: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
 

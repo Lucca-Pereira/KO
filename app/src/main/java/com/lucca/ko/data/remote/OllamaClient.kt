@@ -42,6 +42,62 @@ class OllamaClient(private val http: OkHttpClient) {
     }
 
     /**
+     * Returns [requested] if that model is installed on the server, otherwise the first
+     * installed model (so a stale model name in Settings still produces suggestions).
+     * Falls back to [requested] unchanged if the server can't be listed.
+     */
+    suspend fun resolveModel(baseUrl: String, requested: String): String {
+        val installed = runCatching { listModels(baseUrl) }.getOrNull() ?: return requested
+        if (installed.isEmpty()) return requested
+        val wanted = requested.trim()
+        val hit = installed.any { it == wanted || it.substringBefore(':') == wanted.substringBefore(':') }
+        return if (hit) requested else installed.first()
+    }
+
+    /**
+     * Translates food names to their common English supermarket term. Input names that
+     * the model omits are simply absent from the result. Best-effort: returns empty on
+     * any failure.
+     */
+    suspend fun translateFoods(
+        baseUrl: String,
+        model: String,
+        names: List<String>,
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        if (names.isEmpty()) return@withContext emptyMap()
+        val system =
+            "You translate grocery/food names into English. Reply ONLY with JSON " +
+                "{\"translations\":{\"<original>\":\"<english>\"}}. Use the common English " +
+                "supermarket name, lowercase, singular, no brand names. If a name is already " +
+                "English, repeat it unchanged."
+        val user = "Translate these:\n" + names.joinToString("\n")
+        val payload = ChatRequest(
+            model = model,
+            stream = false,
+            format = "json",
+            options = ChatOptions(temperature = 0.0),
+            messages = listOf(ChatMessage("system", system), ChatMessage("user", user)),
+        )
+        val url = baseUrl.normalizeBase() + "api/chat"
+        val req = Request.Builder()
+            .url(url)
+            .post(json.encodeToString(ChatRequest.serializer(), payload).toRequestBody(jsonMedia))
+            .build()
+        val content = runCatching {
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use ""
+                json.decodeFromString<ChatResponse>(resp.body?.string().orEmpty()).message?.content.orEmpty()
+            }
+        }.getOrDefault("")
+        if (content.isBlank()) return@withContext emptyMap()
+        runCatching {
+            json.decodeFromString<TranslationsWrapper>(content).translations
+                .mapValues { it.value.trim().lowercase() }
+                .filterValues { it.isNotBlank() }
+        }.getOrDefault(emptyMap())
+    }
+
+    /**
      * Ask the model for recipe ideas that use the given pantry item names.
      * Returns an empty list if the model produced nothing usable.
      */
@@ -64,7 +120,7 @@ class OllamaClient(private val http: OkHttpClient) {
             append(" dishes.")
         }
         val payload = ChatRequest(
-            model = model,
+            model = resolveModel(baseUrl, model),
             stream = false,
             format = "json",
             options = ChatOptions(temperature = 0.5),
@@ -117,6 +173,10 @@ class OllamaClient(private val http: OkHttpClient) {
 
     @Serializable private data class SuggestionsWrapper(
         @SerialName("suggestions") val suggestions: List<RecipeIdea> = emptyList(),
+    )
+
+    @Serializable private data class TranslationsWrapper(
+        val translations: Map<String, String> = emptyMap(),
     )
 }
 

@@ -9,6 +9,7 @@ import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.prefs.AppSettings
 import com.lucca.ko.data.prefs.SettingsRepository
+import com.lucca.ko.domain.IngredientMatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -74,15 +75,24 @@ class BackupRepository(
             "This backup was made by a newer version of KO Kitchen. Update the app first."
         }
 
+        // Recompute normalized names with the current rules — older exports carry keys
+        // from before the accent-folding fix ("Orégano" -> "gano").
+        val pantry = backup.pantry.map { it.copy(normalizedName = renorm(it.name, it.normalizedName)) }
+        val shopping = backup.shopping.map { it.copy(normalizedName = renorm(it.name, it.normalizedName)) }
+        val ingredients = backup.dishIngredients.map {
+            it.copy(normalizedName = renorm(it.rawName, it.normalizedName))
+        }
+
         withContext(Dispatchers.IO) { db.clearAllTables() }
         db.withTransaction {
             // Dishes before their ingredients / meal-plan rows (foreign keys).
             db.dishDao().insertAllDishes(backup.dishes)
-            db.dishDao().insertAllIngredients(backup.dishIngredients)
-            db.pantryDao().insertAll(backup.pantry)
-            db.shoppingDao().insertAll(backup.shopping)
+            db.dishDao().insertAllIngredients(ingredients)
+            db.pantryDao().insertAll(pantry)
+            db.shoppingDao().insertAll(shopping)
             db.mealPlanDao().insertAll(backup.mealPlan)
         }
+        settings.markNormalizationRepaired()
         settings.update(
             baseUrl = backup.settings.ollamaBaseUrl,
             model = backup.settings.ollamaModel,
@@ -96,6 +106,9 @@ class BackupRepository(
             shopping = backup.shopping.size,
         )
     }
+
+    private fun renorm(displayName: String, stored: String): String =
+        IngredientMatcher.normalize(displayName).ifBlank { stored }
 
     companion object {
         const val SCHEMA = 1

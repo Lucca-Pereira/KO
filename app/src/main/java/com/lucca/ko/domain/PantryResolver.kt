@@ -37,7 +37,16 @@ object PantryResolver {
             val linked = pantry.firstOrNull { it.id == explicitPantryItemId }
             if (linked != null) return linked to availabilityFor(linked.status)
         }
-        val byName = pantry.associateBy { it.normalizedName }
+        // Index each item by its own normalized name and, if set, its English alias
+        // so a "butter" recipe line resolves to a "mantequilla" pantry item.
+        val byName = HashMap<String, PantryItem>()
+        for (p in pantry) {
+            byName.putIfAbsent(p.normalizedName, p)
+            p.searchName
+                ?.let { IngredientMatcher.normalize(it) }
+                ?.takeIf { it.isNotBlank() }
+                ?.let { byName.putIfAbsent(it, p) }
+        }
         val matchName = IngredientMatcher.bestMatch(normalizedName, byName.keys)
         val match = matchName?.let { byName[it] }
         return match to (match?.let { availabilityFor(it.status) } ?: Availability.MISSING)

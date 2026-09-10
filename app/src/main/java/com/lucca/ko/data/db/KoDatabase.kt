@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 class Converters {
     @TypeConverter fun stockToString(s: StockStatus): String = s.name
@@ -23,7 +25,7 @@ class Converters {
         MealPlanEntry::class,
         ShoppingListItem::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -36,12 +38,23 @@ abstract class KoDatabase : RoomDatabase() {
     companion object {
         @Volatile private var instance: KoDatabase? = null
 
+        /** v1 -> v2: add the English search alias column to pantry_items. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pantry_items ADD COLUMN searchName TEXT")
+            }
+        }
+
         fun get(context: Context): KoDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 KoDatabase::class.java,
                 "ko.db",
-            ).fallbackToDestructiveMigration().build().also { instance = it }
+            )
+                .addMigrations(MIGRATION_1_2)
+                .fallbackToDestructiveMigration()
+                .build()
+                .also { instance = it }
         }
     }
 }

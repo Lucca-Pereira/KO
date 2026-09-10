@@ -88,6 +88,61 @@ class KitchenRepository(
 
     suspend fun deletePantryItem(id: Long) = pantryDao.delete(id)
 
+    /**
+     * Recomputes [normalizedName] for every stored pantry / shopping / recipe-ingredient
+     * row using the current normalize() rules, and runs once (guarded by a flag). Fixes
+     * rows saved before the accent-folding fix, e.g. "Orégano" stored as "gano".
+     */
+    suspend fun repairNormalizationOnce() {
+        if (settings.isNormalizationRepaired()) return
+        pantryDao.getAll().forEach { item ->
+            val fixed = IngredientMatcher.normalize(item.name)
+            if (fixed.isNotBlank() && fixed != item.normalizedName) {
+                runCatching { pantryDao.update(item.copy(normalizedName = fixed)) }
+            }
+        }
+        shoppingDao.getAll().forEach { item ->
+            val fixed = IngredientMatcher.normalize(item.name)
+            if (fixed.isNotBlank() && fixed != item.normalizedName) {
+                runCatching { shoppingDao.update(item.copy(normalizedName = fixed)) }
+            }
+        }
+        dishDao.getAllIngredients().forEach { ing ->
+            val fixed = IngredientMatcher.normalize(ing.rawName)
+            if (fixed.isNotBlank() && fixed != ing.normalizedName) {
+                runCatching { dishDao.updateIngredient(ing.copy(normalizedName = fixed)) }
+            }
+        }
+        settings.markNormalizationRepaired()
+    }
+
+    /**
+     * Asks the recipe bot to translate every pantry item name into English and stores it
+     * as [PantryItem.searchName], used for recipe search and matching. Returns how many
+     * items were updated; 0 if the bot is unreachable or unconfigured.
+     */
+    suspend fun translatePantryToEnglish(): Int {
+        val cfg = settings.settings.first()
+        if (!cfg.ollamaConfigured) return 0
+        val items = pantry.first()
+        if (items.isEmpty()) return 0
+        val translations = ollama.translateFoods(
+            baseUrl = cfg.ollamaBaseUrl,
+            model = cfg.ollamaModel,
+            names = items.map { it.name },
+        )
+        if (translations.isEmpty()) return 0
+        var updated = 0
+        items.forEach { item ->
+            val english = translations[item.name]?.takeIf { it.isNotBlank() } ?: return@forEach
+            if (!english.equals(item.searchName, ignoreCase = true)) {
+                pantryDao.update(item.copy(searchName = english))
+                updated++
+            }
+        }
+        return updated
+    }
+
     /** Keeps the shopping list in step with a pantry item's status. */
     private suspend fun syncShoppingForPantry(item: PantryItem) {
         if (item.status == StockStatus.OUT) {
@@ -284,7 +339,8 @@ class KitchenRepository(
     suspend fun suggestDishes(): SuggestionResult {
         val cfg = settings.settings.first()
         val pantryItems = pantry.first()
-        val pantryNames = pantryItems.map { it.name }
+        // Prefer the English alias so bot ideas + TheMealDB search work for a non-English pantry.
+        val pantryNames = pantryItems.map { it.searchName?.takeIf(String::isNotBlank) ?: it.name }
 
         var usedOllama = false
         var note: String? = null
