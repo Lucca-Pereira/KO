@@ -1,5 +1,7 @@
 package com.lucca.ko.domain
 
+import java.text.Normalizer
+
 /**
  * Pure text utilities for reconciling free-form recipe ingredient names with pantry
  * item names. No Android dependencies so it can be unit-tested on the JVM.
@@ -28,6 +30,8 @@ object IngredientMatcher {
     /** Lower-case, strip measures/descriptors/punctuation, singularise. */
     fun normalize(input: String): String {
         var s = input.lowercase().trim()
+        // fold accents so "orégano" -> "oregano", "puré" -> "pure", "jalapeño" -> "jalapeno"
+        s = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
         // drop parenthetical notes
         s = s.replace(Regex("\\([^)]*\\)"), " ")
         // drop anything after a comma (usually preparation notes)

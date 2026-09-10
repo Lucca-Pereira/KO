@@ -22,6 +22,14 @@ class IngredientMatcherTest {
     }
 
     @Test
+    fun normalize_foldsAccents() {
+        assertEquals("oregano", IngredientMatcher.normalize("Orégano"))
+        assertEquals("pimenton picante", IngredientMatcher.normalize("Pimentón picante"))
+        assertEquals("pure de patata", IngredientMatcher.normalize("Puré de patatas"))
+        assertEquals("jalapeno", IngredientMatcher.normalize("Jalapeño"))
+    }
+
+    @Test
     fun bestMatch_exactBeatsPartial() {
         val pantry = listOf("onion", "red onion", "spring onion")
         assertEquals("onion", IngredientMatcher.bestMatch("onion", pantry))
