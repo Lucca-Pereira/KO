@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background_dark">#111411</color>
+    <!-- Night override for the same name declared in values/colors.xml -->
+    <color name="window_background">#111411</color>
 </resources>

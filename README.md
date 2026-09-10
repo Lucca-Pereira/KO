@@ -22,8 +22,13 @@ ingredients, photos and source links come from TheMealDB.
    `ko-kitchen-vX.Y.Z.apk`.
 2. On your phone, allow installing from your browser / files app
    (*Settings → Apps → Special access → Install unknown apps*).
-3. Open the APK to install. The build is debug-signed, so Play Protect may warn –
-   that is expected for a self-published app.
+3. Open the APK to install. Play Protect may warn — that is expected for a
+   self-published app; choose *Install anyway*.
+
+> **Upgrading from v0.1.1 or earlier:** those builds were each signed with a
+> throwaway key, so Android will refuse to install a newer one on top. **Uninstall
+> KO Kitchen once**, then install v0.1.2+. From v0.1.2 on, every build uses one
+> committed key (`app/ko.keystore`) so updates install straight over each other.
 
 ## Connect the recipe bot
 
@@ -62,11 +67,13 @@ Coil · single-module, manual DI. CI in
 [`.github/workflows/android.yml`](.github/workflows/android.yml) builds the APK and
 attaches it to every `v*` tag.
 
-### Optional: release signing
+### Signing
 
-The CI ships a debug-signed APK. To publish a release-signed build instead, add a
-keystore and wire a `signingConfig` into `app/build.gradle.kts`, passing the
-secrets from repository settings into the Gradle build.
+CI runs `assembleRelease` and signs with the committed `app/ko.keystore`
+(password `ko-kitchen`, alias `ko`). It is a self-signed key with no value beyond
+tying updates to this package name, so it lives in the repo — fine for a
+sideloaded personal app. For a Play Store release, swap in a private keystore via
+repository secrets.
 
 ## Credits
 

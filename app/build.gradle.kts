@@ -13,14 +13,29 @@ android {
         applicationId = "com.lucca.ko"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        // A committed, stable key so every build (local + CI) is signed identically and
+        // updates install over each other. Not secret for a sideloaded personal app.
+        create("shared") {
+            storeFile = file("ko.keystore")
+            storePassword = "ko-kitchen"
+            keyAlias = "ko"
+            keyPassword = "ko-kitchen"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
+            signingConfig = signingConfigs.getByName("shared")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
