@@ -310,10 +310,19 @@ class KitchenRepository(
         val meals = LinkedHashMap<String, MealSummary>()
 
         for (idea in ideas.take(cfg.suggestionCount)) {
-            runCatching { mealDb.searchByName(idea.query) }.getOrDefault(emptyList())
-                .ifEmpty { runCatching { mealDb.filterByIngredient(idea.query) }.getOrDefault(emptyList()) }
-                .take(3)
-                .forEach { if (it.id.isNotBlank()) meals.putIfAbsent(it.id, it) }
+            // Small models often return a whole sentence as the "query"; fall back to the
+            // dish name so the recipe search still lands on something.
+            val terms = listOf(idea.query, idea.dish)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+            var hits: List<MealSummary> = emptyList()
+            for (term in terms) {
+                hits = runCatching { mealDb.searchByName(term) }.getOrDefault(emptyList())
+                    .ifEmpty { runCatching { mealDb.filterByIngredient(term) }.getOrDefault(emptyList()) }
+                if (hits.isNotEmpty()) break
+            }
+            hits.take(3).forEach { if (it.id.isNotBlank()) meals.putIfAbsent(it.id, it) }
         }
 
         if (meals.size < 6) {

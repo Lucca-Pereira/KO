@@ -17,10 +17,14 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  *  Ollama running on the developer machine (127.0.0.1:11434 on the host). */
 const val DEFAULT_OLLAMA_URL = "http://10.0.2.2:11434"
 
+/** Tiny model that runs on a CPU-only box (e.g. the NAS at 192.168.68.65). Point the
+ *  app at a GPU host and pick a bigger model in Settings for better suggestions. */
+const val DEFAULT_OLLAMA_MODEL = "qwen2.5:0.5b"
+
 @Serializable
 data class AppSettings(
     val ollamaBaseUrl: String = DEFAULT_OLLAMA_URL,
-    val ollamaModel: String = "qwen2.5-coder:14b",
+    val ollamaModel: String = DEFAULT_OLLAMA_MODEL,
     val suggestionCount: Int = 5,
 ) {
     val ollamaConfigured: Boolean get() = ollamaBaseUrl.isNotBlank()
@@ -37,7 +41,7 @@ class SettingsRepository(private val context: Context) {
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(
             ollamaBaseUrl = p[Keys.baseUrl] ?: DEFAULT_OLLAMA_URL,
-            ollamaModel = p[Keys.model]?.takeIf { it.isNotBlank() } ?: "qwen2.5-coder:14b",
+            ollamaModel = p[Keys.model]?.takeIf { it.isNotBlank() } ?: DEFAULT_OLLAMA_MODEL,
             suggestionCount = (p[Keys.count] ?: 5).coerceIn(1, 10),
         )
     }
