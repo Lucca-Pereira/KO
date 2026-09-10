@@ -1,18 +1,23 @@
 package com.lucca.ko.ui.settings
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.prefs.AppSettings
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.ui.koApp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface TestState {
     data object Idle : TestState
@@ -21,9 +26,17 @@ sealed interface TestState {
     data class Failed(val message: String) : TestState
 }
 
+sealed interface BackupState {
+    data object Idle : BackupState
+    data object Working : BackupState
+    data class Done(val message: String) : BackupState
+    data class Failed(val message: String) : BackupState
+}
+
 class SettingsViewModel(
     private val repo: KitchenRepository,
     private val settingsRepo: SettingsRepository,
+    private val backupRepo: BackupRepository,
 ) : ViewModel() {
 
     val settings = settingsRepo.settings
@@ -43,12 +56,50 @@ class SettingsViewModel(
             .onFailure { _test.value = TestState.Failed(it.message ?: "Connection failed") }
     }
 
+    private val _backup = MutableStateFlow<BackupState>(BackupState.Idle)
+    val backup = _backup.asStateFlow()
+
+    fun clearBackupState() { _backup.value = BackupState.Idle }
+
+    fun exportTo(resolver: ContentResolver, uri: Uri) = viewModelScope.launch {
+        _backup.value = BackupState.Working
+        runCatching {
+            val text = backupRepo.exportJson()
+            withContext(Dispatchers.IO) {
+                resolver.openOutputStream(uri, "wt")?.use { out ->
+                    out.write(text.toByteArray())
+                } ?: error("Couldn't open the file for writing.")
+            }
+        }
+            .onSuccess { _backup.value = BackupState.Done("Backup saved.") }
+            .onFailure { _backup.value = BackupState.Failed(it.message ?: "Export failed.") }
+    }
+
+    fun importFrom(resolver: ContentResolver, uri: Uri) = viewModelScope.launch {
+        _backup.value = BackupState.Working
+        runCatching {
+            val text = withContext(Dispatchers.IO) {
+                resolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                    ?: error("Couldn't open the file.")
+            }
+            backupRepo.importJson(text)
+        }
+            .onSuccess {
+                _backup.value = BackupState.Done(
+                    "Restored ${it.pantry} pantry · ${it.dishes} dishes · " +
+                        "${it.plan} planned · ${it.shopping} shopping.",
+                )
+            }
+            .onFailure { _backup.value = BackupState.Failed(it.message ?: "Import failed.") }
+    }
+
     companion object {
         val Factory = viewModelFactory {
             initializer {
                 SettingsViewModel(
                     koApp.container.repository,
                     koApp.container.settingsRepository,
+                    koApp.container.backupRepository,
                 )
             }
         }

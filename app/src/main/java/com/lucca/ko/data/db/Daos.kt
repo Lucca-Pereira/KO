@@ -40,6 +40,12 @@ interface PantryDao {
     @Update
     suspend fun update(item: PantryItem)
 
+    @Query("SELECT * FROM pantry_items")
+    suspend fun getAll(): List<PantryItem>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<PantryItem>)
+
     @Query("UPDATE pantry_items SET status = :status, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setStatus(id: Long, status: StockStatus, updatedAt: Long)
 
@@ -81,6 +87,18 @@ abstract class DishDao {
 
     @Query("DELETE FROM dishes WHERE id NOT IN (SELECT dishId FROM meal_plan)")
     abstract suspend fun deleteOrphanDishes()
+
+    @Query("SELECT * FROM dishes")
+    abstract suspend fun getAllDishes(): List<Dish>
+
+    @Query("SELECT * FROM dish_ingredients")
+    abstract suspend fun getAllIngredients(): List<DishIngredient>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertAllDishes(dishes: List<Dish>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertAllIngredients(ingredients: List<DishIngredient>)
 }
 
 @Dao
@@ -94,6 +112,12 @@ interface MealPlanDao {
 
     @Query("DELETE FROM meal_plan WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("SELECT * FROM meal_plan")
+    suspend fun getAll(): List<MealPlanEntry>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(entries: List<MealPlanEntry>)
 }
 
 @Dao
@@ -118,4 +142,10 @@ interface ShoppingDao {
 
     @Query("DELETE FROM shopping_items WHERE checked = 1")
     suspend fun clearChecked()
+
+    @Query("SELECT * FROM shopping_items")
+    suspend fun getAll(): List<ShoppingListItem>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<ShoppingListItem>)
 }

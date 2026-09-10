@@ -4,9 +4,12 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class StockStatus { IN_STOCK, LOW, OUT }
 
+@Serializable
 enum class MealSlot { BREAKFAST, LUNCH, DINNER, OTHER }
 
 /** Preset categories offered in the UI; [category] is still a free-text column. */
@@ -15,6 +18,7 @@ val PRESET_CATEGORIES = listOf(
     "Spices & Herbs", "Baking", "Condiments & Oils", "Frozen", "Snacks", "Drinks", "Other",
 )
 
+@Serializable
 @Entity(
     tableName = "pantry_items",
     indices = [Index(value = ["normalizedName"], unique = true)],
@@ -30,6 +34,7 @@ data class PantryItem(
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
+@Serializable
 @Entity(tableName = "dishes")
 data class Dish(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -41,6 +46,7 @@ data class Dish(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+@Serializable
 @Entity(
     tableName = "dish_ingredients",
     foreignKeys = [
@@ -63,6 +69,7 @@ data class DishIngredient(
     val pantryItemId: Long? = null,
 )
 
+@Serializable
 @Entity(
     tableName = "meal_plan",
     foreignKeys = [
@@ -83,6 +90,7 @@ data class MealPlanEntry(
     val dishId: Long,
 )
 
+@Serializable
 @Entity(
     tableName = "shopping_items",
     indices = [Index(value = ["normalizedName"], unique = true)],

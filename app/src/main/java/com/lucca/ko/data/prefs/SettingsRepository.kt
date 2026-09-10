@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -16,6 +17,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  *  Ollama running on the developer machine (127.0.0.1:11434 on the host). */
 const val DEFAULT_OLLAMA_URL = "http://10.0.2.2:11434"
 
+@Serializable
 data class AppSettings(
     val ollamaBaseUrl: String = DEFAULT_OLLAMA_URL,
     val ollamaModel: String = "qwen2.5-coder:14b",

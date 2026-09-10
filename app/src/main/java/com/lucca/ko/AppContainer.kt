@@ -1,6 +1,7 @@
 package com.lucca.ko
 
 import android.content.Context
+import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.prefs.SettingsRepository
@@ -37,5 +38,9 @@ class AppContainer(context: Context) {
             ollama = OllamaClient(httpClient),
             settings = settingsRepository,
         )
+    }
+
+    val backupRepository: BackupRepository by lazy {
+        BackupRepository(database, settingsRepository)
     }
 }
