@@ -15,13 +15,13 @@ import kotlinx.serialization.Serializable
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-/** Default points at the standard Android emulator's host-loopback alias for
- *  Ollama running on the developer machine (127.0.0.1:11434 on the host). */
-const val DEFAULT_OLLAMA_URL = "http://10.0.2.2:11434"
+/** The home NAS Ollama over Tailscale (stable IP; the LAN IP is DHCP and can move).
+ *  On the Android emulator use http://10.0.2.2:11434 to reach a host-local Ollama. */
+const val DEFAULT_OLLAMA_URL = "http://100.67.219.26:11434"
 
-/** Tiny model that runs on a CPU-only box (e.g. the NAS at 192.168.68.65). Point the
- *  app at a GPU host and pick a bigger model in Settings for better suggestions. */
-const val DEFAULT_OLLAMA_MODEL = "qwen2.5:0.5b"
+/** Model installed on the NAS, chosen for Spanish->English food translation accuracy
+ *  and stable JSON. `llama3.1:8b` is also there as a faster fallback. */
+const val DEFAULT_OLLAMA_MODEL = "gemma2:9b"
 
 @Serializable
 data class AppSettings(

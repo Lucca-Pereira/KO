@@ -30,6 +30,19 @@ class IngredientMatcherTest {
     }
 
     @Test
+    fun normalize_canonicalisesUsUkSynonyms() {
+        assertEquals("aubergine", IngredientMatcher.normalize("Eggplant"))
+        assertEquals("courgette", IngredientMatcher.normalize("zucchini"))
+        assertEquals("coriander", IngredientMatcher.normalize("fresh cilantro"))
+        assertEquals("prawn", IngredientMatcher.normalize("Shrimps"))
+        // a UK-English alias still matches a US-worded recipe line
+        assertEquals(
+            IngredientMatcher.normalize("aubergine"),
+            IngredientMatcher.normalize("eggplant"),
+        )
+    }
+
+    @Test
     fun bestMatch_exactBeatsPartial() {
         val pantry = listOf("onion", "red onion", "spring onion")
         assertEquals("onion", IngredientMatcher.bestMatch("onion", pantry))

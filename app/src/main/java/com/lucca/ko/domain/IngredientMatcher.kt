@@ -27,7 +27,20 @@ object IngredientMatcher {
         "piece", "pieces", "ml.", "pint", "pints", "quart", "gallon", "cm", "inch",
     )
 
-    /** Lower-case, strip measures/descriptors/punctuation, singularise. */
+    /** US -> UK food words, so a "cilantro" alias matches TheMealDB's "Coriander". */
+    private val synonyms = mapOf(
+        "eggplant" to "aubergine",
+        "zucchini" to "courgette",
+        "cilantro" to "coriander",
+        "shrimp" to "prawn",
+        "garbanzo" to "chickpea",
+        "arugula" to "rocket",
+        "beet" to "beetroot",
+        "cornstarch" to "cornflour",
+        "scallion" to "spring onion",
+    )
+
+    /** Lower-case, strip measures/descriptors/punctuation, singularise, canonicalise synonyms. */
     fun normalize(input: String): String {
         var s = input.lowercase().trim()
         // fold accents so "orégano" -> "oregano", "puré" -> "pure", "jalapeño" -> "jalapeno"
@@ -42,6 +55,7 @@ object IngredientMatcher {
             .map { it.trim() }
             .filter { it.isNotEmpty() && it !in descriptors && it !in units }
             .map { singularize(it) }
+            .map { synonyms[it] ?: it }
             .filter { it.isNotEmpty() }
         val joined = tokens.joinToString(" ")
         return joined.ifEmpty { input.lowercase().trim() }

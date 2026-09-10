@@ -101,9 +101,9 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
         ) {
             Text("Recipe bot (Ollama)", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Run Ollama on your computer. On the Android emulator, http://10.0.2.2:11434 " +
-                    "reaches it (that is the host's 127.0.0.1). On a real phone, start Ollama with " +
-                    "OLLAMA_HOST=0.0.0.0 and use the computer's Wi-Fi IP, e.g. http://192.168.1.20:11434.",
+                "Defaults to the home NAS over Tailscale. The Ollama host must run with " +
+                    "OLLAMA_HOST=0.0.0.0 to be reachable from the phone. Use Test connection " +
+                    "below, then tap a model to use it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

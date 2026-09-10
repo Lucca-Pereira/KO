@@ -63,8 +63,23 @@ class OllamaClient(private val http: OkHttpClient) {
         baseUrl: String,
         model: String,
         names: List<String>,
+    ): Map<String, String> {
+        if (names.isEmpty()) return emptyMap()
+        val resolved = resolveModel(baseUrl, model)
+        // Small batches: large lists push weak models past the timeout and make them
+        // drop the JSON wrapper. 10 items ~= 20-25s on an 8B model on CPU.
+        val out = LinkedHashMap<String, String>()
+        for (batch in names.chunked(10)) {
+            out += translateBatch(baseUrl, resolved, batch)
+        }
+        return out
+    }
+
+    private suspend fun translateBatch(
+        baseUrl: String,
+        model: String,
+        names: List<String>,
     ): Map<String, String> = withContext(Dispatchers.IO) {
-        if (names.isEmpty()) return@withContext emptyMap()
         val system =
             "You translate grocery/food names into English. Reply ONLY with JSON " +
                 "{\"translations\":{\"<original>\":\"<english>\"}}. Use the common English " +
@@ -89,12 +104,20 @@ class OllamaClient(private val http: OkHttpClient) {
                 json.decodeFromString<ChatResponse>(resp.body?.string().orEmpty()).message?.content.orEmpty()
             }
         }.getOrDefault("")
-        if (content.isBlank()) return@withContext emptyMap()
-        runCatching {
+        parseTranslations(content)
+    }
+
+    /** Accepts either {"translations":{...}} or a bare {"<original>":"<english>"} map. */
+    private fun parseTranslations(content: String): Map<String, String> {
+        if (content.isBlank()) return emptyMap()
+        val raw = runCatching {
             json.decodeFromString<TranslationsWrapper>(content).translations
-                .mapValues { it.value.trim().lowercase() }
-                .filterValues { it.isNotBlank() }
-        }.getOrDefault(emptyMap())
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+            ?: runCatching { json.decodeFromString<Map<String, String>>(content) }.getOrNull()
+            ?: return emptyMap()
+        return raw
+            .mapValues { it.value.trim().lowercase() }
+            .filterValues { it.isNotBlank() }
     }
 
     /**
