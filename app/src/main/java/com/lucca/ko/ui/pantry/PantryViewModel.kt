@@ -2,12 +2,10 @@ package com.lucca.ko.ui.pantry
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.StockStatus
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -58,8 +56,6 @@ class PantryViewModel(private val repo: KitchenRepository) : ViewModel() {
     }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer { PantryViewModel(koApp.container.repository) }
-        }
+        val Factory = koFactory { PantryViewModel(it.repository) }
     }
 }

@@ -1,16 +1,14 @@
 package com.lucca.ko.ui.dish
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.Dish
 import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.PantryResolver
 import com.lucca.ko.domain.ResolvedIngredient
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -59,11 +57,8 @@ class DishViewModel(
     fun addAllMissingToShopping() = viewModelScope.launch { repo.addMissingIngredientsToShopping(dishId) }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer {
-                val dishId = createSavedStateHandle().get<Long>("dishId") ?: 0L
-                DishViewModel(koApp.container.repository, dishId)
-            }
+        val Factory = koFactory { container ->
+            DishViewModel(container.repository, createSavedStateHandle().get<Long>("dishId") ?: 0L)
         }
     }
 }

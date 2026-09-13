@@ -4,13 +4,11 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.prefs.AppSettings
 import com.lucca.ko.data.prefs.SettingsRepository
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -118,14 +116,8 @@ class SettingsViewModel(
     }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer {
-                SettingsViewModel(
-                    koApp.container.repository,
-                    koApp.container.settingsRepository,
-                    koApp.container.backupRepository,
-                )
-            }
+        val Factory = koFactory {
+            SettingsViewModel(it.repository, it.settingsRepository, it.backupRepository)
         }
     }
 }

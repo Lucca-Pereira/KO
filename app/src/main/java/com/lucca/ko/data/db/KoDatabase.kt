@@ -8,6 +8,10 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.lucca.ko.data.db.dao.DishDao
+import com.lucca.ko.data.db.dao.MealPlanDao
+import com.lucca.ko.data.db.dao.PantryDao
+import com.lucca.ko.data.db.dao.ShoppingDao
 
 class Converters {
     @TypeConverter fun stockToString(s: StockStatus): String = s.name

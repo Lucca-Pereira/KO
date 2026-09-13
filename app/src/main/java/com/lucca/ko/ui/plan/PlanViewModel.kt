@@ -2,12 +2,15 @@ package com.lucca.ko.ui.plan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.data.db.PlannedDish
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.data.db.relations.PlannedDish
+import com.lucca.ko.ui.koFactory
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,11 +18,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.format.TextStyle
-import java.time.temporal.TemporalAdjusters
-import java.util.Locale
 
 data class DayPlan(
     val date: LocalDate,
@@ -83,8 +81,6 @@ class PlanViewModel(private val repo: KitchenRepository) : ViewModel() {
     fun removeEntry(id: Long) = viewModelScope.launch { repo.removePlanEntry(id) }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer { PlanViewModel(koApp.container.repository) }
-        }
+        val Factory = koFactory { PlanViewModel(it.repository) }
     }
 }

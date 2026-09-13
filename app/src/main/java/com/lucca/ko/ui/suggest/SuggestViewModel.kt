@@ -2,17 +2,15 @@ package com.lucca.ko.ui.suggest
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.SuggestionResult
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.ui.koFactory
+import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 data class SuggestUiState(
     val loading: Boolean = true,
@@ -54,8 +52,6 @@ class SuggestViewModel(private val repo: KitchenRepository) : ViewModel() {
     }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer { SuggestViewModel(koApp.container.repository) }
-        }
+        val Factory = koFactory { SuggestViewModel(it.repository) }
     }
 }

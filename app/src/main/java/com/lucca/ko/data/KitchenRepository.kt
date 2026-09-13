@@ -1,18 +1,18 @@
 package com.lucca.ko.data
 
 import com.lucca.ko.data.db.Dish
-import com.lucca.ko.data.db.DishDao
 import com.lucca.ko.data.db.DishIngredient
-import com.lucca.ko.data.db.DishWithIngredients
-import com.lucca.ko.data.db.MealPlanDao
 import com.lucca.ko.data.db.MealPlanEntry
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.data.db.PantryDao
 import com.lucca.ko.data.db.PantryItem
-import com.lucca.ko.data.db.PlannedDish
-import com.lucca.ko.data.db.ShoppingDao
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.data.db.dao.DishDao
+import com.lucca.ko.data.db.dao.MealPlanDao
+import com.lucca.ko.data.db.dao.PantryDao
+import com.lucca.ko.data.db.dao.ShoppingDao
+import com.lucca.ko.data.db.relations.DishWithIngredients
+import com.lucca.ko.data.db.relations.PlannedDish
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.data.remote.MealDbClient
 import com.lucca.ko.data.remote.MealDetail
@@ -23,9 +23,9 @@ import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
 import com.lucca.ko.domain.PantryResolver
+import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import java.time.LocalDate
 
 data class SuggestionResult(
     val usedOllama: Boolean,

@@ -2,11 +2,9 @@ package com.lucca.ko.ui.shopping
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.ShoppingListItem
-import com.lucca.ko.ui.koApp
+import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -45,8 +43,6 @@ class ShoppingViewModel(private val repo: KitchenRepository) : ViewModel() {
     fun clearChecked() = viewModelScope.launch { repo.clearCheckedShopping() }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer { ShoppingViewModel(koApp.container.repository) }
-        }
+        val Factory = koFactory { ShoppingViewModel(it.repository) }
     }
 }

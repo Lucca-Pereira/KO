@@ -28,13 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lucca.ko.data.KitchenRepository
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.ui.koApp
-import kotlinx.coroutines.launch
+import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 class ManualDishViewModel(private val repo: KitchenRepository) : ViewModel() {
     fun save(
@@ -56,9 +54,7 @@ class ManualDishViewModel(private val repo: KitchenRepository) : ViewModel() {
     }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer { ManualDishViewModel(koApp.container.repository) }
-        }
+        val Factory = koFactory { ManualDishViewModel(it.repository) }
     }
 }
 
