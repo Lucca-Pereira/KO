@@ -1,19 +1,22 @@
 package com.lucca.ko.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -36,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,6 +59,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
 
     val context = LocalContext.current
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
+    var restoreSettingsToo by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -71,17 +74,35 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
             onDismissRequest = { pendingImport = null },
             title = { Text("Replace all data?") },
             text = {
-                Text(
-                    "Importing will delete everything currently in KO Kitchen — pantry, " +
-                        "dishes, meal plan and shopping list — and replace it with the " +
-                        "contents of the backup file. This can't be undone.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Importing will delete everything currently in KO Kitchen — pantry, " +
+                            "recipes, meal plan and shopping list — and replace it with the " +
+                            "contents of the backup file. This can't be undone.",
+                    )
+                    // Off by default: restoring an old backup should not silently reset the
+                    // server settings you fixed last week.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { restoreSettingsToo = !restoreSettingsToo },
+                    ) {
+                        Checkbox(
+                            checked = restoreSettingsToo,
+                            onCheckedChange = { restoreSettingsToo = it },
+                        )
+                        Text("Also restore the server settings from the file")
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val uri = pendingImport
                     pendingImport = null
-                    if (uri != null) vm.importFrom(context.contentResolver, uri)
+                    if (uri != null) {
+                        vm.importFrom(context.contentResolver, uri, restoreSettingsToo)
+                    }
                 }) { Text("Replace") }
             },
             dismissButton = {

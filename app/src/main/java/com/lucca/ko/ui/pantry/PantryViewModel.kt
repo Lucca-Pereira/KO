@@ -2,7 +2,7 @@ package com.lucca.ko.ui.pantry
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lucca.ko.data.KitchenRepository
+import com.lucca.ko.data.repo.PantryRepository
 import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.ui.koFactory
@@ -21,7 +21,7 @@ data class PantryUiState(
 
 data class PantrySection(val category: String, val items: List<PantryItem>)
 
-class PantryViewModel(private val repo: KitchenRepository) : ViewModel() {
+class PantryViewModel(private val repo: PantryRepository) : ViewModel() {
 
     private val query = MutableStateFlow("")
 
@@ -56,6 +56,6 @@ class PantryViewModel(private val repo: KitchenRepository) : ViewModel() {
     }
 
     companion object {
-        val Factory = koFactory { PantryViewModel(it.repository) }
+        val Factory = koFactory { PantryViewModel(it.pantryRepository) }
     }
 }

@@ -6,12 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
-import com.lucca.ko.data.db.dao.DishDao
 import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.PantryDao
+import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.db.dao.ShoppingDao
+import com.lucca.ko.data.db.dao.TagDao
 
 class Converters {
     @TypeConverter fun stockToString(s: StockStatus): String = s.name
@@ -19,35 +18,40 @@ class Converters {
 
     @TypeConverter fun slotToString(s: MealSlot): String = s.name
     @TypeConverter fun stringToSlot(s: String): MealSlot = MealSlot.valueOf(s)
+
+    @TypeConverter fun recipeSourceToString(s: RecipeSource?): String? = s?.name
+    @TypeConverter fun stringToRecipeSource(s: String?): RecipeSource? =
+        s?.let { runCatching { RecipeSource.valueOf(it) }.getOrDefault(RecipeSource.MANUAL) }
+
+    @TypeConverter fun macroSourceToString(s: MacroSource?): String? = s?.name
+    @TypeConverter fun stringToMacroSource(s: String?): MacroSource? =
+        s?.let { runCatching { MacroSource.valueOf(it) }.getOrNull() }
 }
 
 @Database(
     entities = [
         PantryItem::class,
-        Dish::class,
-        DishIngredient::class,
+        Recipe::class,
+        RecipeIngredient::class,
+        RecipeStep::class,
+        Tag::class,
+        RecipeTag::class,
         MealPlanEntry::class,
         ShoppingListItem::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class KoDatabase : RoomDatabase() {
     abstract fun pantryDao(): PantryDao
-    abstract fun dishDao(): DishDao
+    abstract fun recipeDao(): RecipeDao
+    abstract fun tagDao(): TagDao
     abstract fun mealPlanDao(): MealPlanDao
     abstract fun shoppingDao(): ShoppingDao
 
     companion object {
         @Volatile private var instance: KoDatabase? = null
-
-        /** v1 -> v2: add the English search alias column to pantry_items. */
-        val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE pantry_items ADD COLUMN searchName TEXT")
-            }
-        }
 
         fun get(context: Context): KoDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
@@ -55,8 +59,10 @@ abstract class KoDatabase : RoomDatabase() {
                 KoDatabase::class.java,
                 "ko.db",
             )
-                .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
+                .addMigrations(*KO_MIGRATIONS)
+                // Deliberately no fallbackToDestructiveMigration(). A missing migration now
+                // crashes on launch, which is the correct behaviour: the alternative silently
+                // deletes the pantry. Every migration ships behind MigrationTest.
                 .build()
                 .also { instance = it }
         }

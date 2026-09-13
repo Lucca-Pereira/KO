@@ -5,7 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.BackupRepository
-import com.lucca.ko.data.KitchenRepository
+import com.lucca.ko.data.repo.SuggestionRepository
 import com.lucca.ko.data.prefs.AppSettings
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.ui.koFactory
@@ -39,7 +39,7 @@ sealed interface TranslateState {
 }
 
 class SettingsViewModel(
-    private val repo: KitchenRepository,
+    private val suggestions: SuggestionRepository,
     private val settingsRepo: SettingsRepository,
     private val backupRepo: BackupRepository,
 ) : ViewModel() {
@@ -56,7 +56,7 @@ class SettingsViewModel(
 
     fun testConnection(baseUrl: String) = viewModelScope.launch {
         _test.value = TestState.Running
-        repo.testOllama(baseUrl)
+        suggestions.testOllama(baseUrl)
             .onSuccess { _test.value = TestState.Ok(it) }
             .onFailure { _test.value = TestState.Failed(it.message ?: "Connection failed") }
     }
@@ -66,7 +66,7 @@ class SettingsViewModel(
 
     fun translatePantry() = viewModelScope.launch {
         _translate.value = TranslateState.Running
-        runCatching { repo.translatePantryToEnglish() }
+        runCatching { suggestions.translatePantryToEnglish() }
             .onSuccess { n ->
                 _translate.value = when {
                     n > 0 -> TranslateState.Done("Translated $n pantry item(s) for recipe search.")
@@ -97,18 +97,26 @@ class SettingsViewModel(
             .onFailure { _backup.value = BackupState.Failed(it.message ?: "Export failed.") }
     }
 
-    fun importFrom(resolver: ContentResolver, uri: Uri) = viewModelScope.launch {
+    /**
+     * @param restoreSettings off by default — restoring an old backup should not silently reset
+     *   the server configuration you fixed last week.
+     */
+    fun importFrom(
+        resolver: ContentResolver,
+        uri: Uri,
+        restoreSettings: Boolean = false,
+    ) = viewModelScope.launch {
         _backup.value = BackupState.Working
         runCatching {
             val text = withContext(Dispatchers.IO) {
                 resolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
                     ?: error("Couldn't open the file.")
             }
-            backupRepo.importJson(text)
+            backupRepo.importJson(text, restoreSettings = restoreSettings)
         }
             .onSuccess {
                 _backup.value = BackupState.Done(
-                    "Restored ${it.pantry} pantry · ${it.dishes} dishes · " +
+                    "Restored ${it.pantry} pantry · ${it.recipes} recipes · " +
                         "${it.plan} planned · ${it.shopping} shopping.",
                 )
             }
@@ -117,7 +125,7 @@ class SettingsViewModel(
 
     companion object {
         val Factory = koFactory {
-            SettingsViewModel(it.repository, it.settingsRepository, it.backupRepository)
+            SettingsViewModel(it.suggestionRepository, it.settingsRepository, it.backupRepository)
         }
     }
 }

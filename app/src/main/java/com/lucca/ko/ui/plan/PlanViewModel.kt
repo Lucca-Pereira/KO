@@ -2,9 +2,9 @@ package com.lucca.ko.ui.plan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lucca.ko.data.KitchenRepository
+import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.data.db.relations.PlannedDish
+import com.lucca.ko.data.db.relations.PlannedRecipe
 import com.lucca.ko.ui.koFactory
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -24,7 +24,7 @@ data class DayPlan(
     val weekdayLabel: String,
     val dateLabel: String,
     val isToday: Boolean,
-    val dishesBySlot: List<Pair<MealSlot, List<PlannedDish>>>,
+    val dishesBySlot: List<Pair<MealSlot, List<PlannedRecipe>>>,
 )
 
 data class PlanUiState(
@@ -41,7 +41,7 @@ private fun shortDate(date: LocalDate): String =
     "${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())}"
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class PlanViewModel(private val repo: KitchenRepository) : ViewModel() {
+class PlanViewModel(private val repo: MealPlanRepository) : ViewModel() {
 
     private val weekStart = MutableStateFlow(mondayOf(LocalDate.now()))
 
@@ -51,7 +51,7 @@ class PlanViewModel(private val repo: KitchenRepository) : ViewModel() {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanUiState())
 
-    private fun buildState(start: LocalDate, planned: List<PlannedDish>): PlanUiState {
+    private fun buildState(start: LocalDate, planned: List<PlannedRecipe>): PlanUiState {
         val today = LocalDate.now()
         val days = (0..6L).map { offset ->
             val date = start.plusDays(offset)
@@ -78,9 +78,10 @@ class PlanViewModel(private val repo: KitchenRepository) : ViewModel() {
     fun prevWeek() { weekStart.value = weekStart.value.minusWeeks(1) }
     fun goToday() { weekStart.value = mondayOf(LocalDate.now()) }
 
+    /** Removes the planned meal only — the recipe stays in the library. */
     fun removeEntry(id: Long) = viewModelScope.launch { repo.removePlanEntry(id) }
 
     companion object {
-        val Factory = koFactory { PlanViewModel(it.repository) }
+        val Factory = koFactory { PlanViewModel(it.mealPlanRepository) }
     }
 }

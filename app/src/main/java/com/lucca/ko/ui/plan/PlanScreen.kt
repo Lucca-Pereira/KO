@@ -191,19 +191,37 @@ private fun DayCard(
                         modifier = Modifier.padding(top = 6.dp),
                     )
                     dishes.forEach { planned ->
+                        // The recipe is null once it has been deleted from the library. The
+                        // entry survives on its title snapshot: greyed out and not tappable,
+                        // so the history of what you cooked stays intact.
+                        val recipe = planned.recipe
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable { onOpenDish(planned.dish.id) }
+                                .then(
+                                    if (recipe != null) {
+                                        Modifier.clickable { onOpenDish(recipe.id) }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(planned.dish.title, Modifier.weight(1f))
+                            Text(
+                                planned.displayTitle,
+                                Modifier.weight(1f),
+                                color = if (recipe != null) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
                             IconButton(onClick = { onRemove(planned.entry.id) }) {
                                 Icon(
                                     Icons.Filled.Delete,
-                                    contentDescription = "Remove ${planned.dish.title}",
+                                    contentDescription = "Remove ${planned.displayTitle}",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }

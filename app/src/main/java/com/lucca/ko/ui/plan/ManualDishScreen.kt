@@ -28,13 +28,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.lucca.ko.data.KitchenRepository
+import com.lucca.ko.data.repo.MealPlanRepository
+import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
 import kotlinx.coroutines.launch
 
-class ManualDishViewModel(private val repo: KitchenRepository) : ViewModel() {
+class ManualDishViewModel(
+    private val recipes: RecipeRepository,
+    private val plan: MealPlanRepository,
+) : ViewModel() {
     fun save(
         title: String,
         url: String,
@@ -43,10 +47,14 @@ class ManualDishViewModel(private val repo: KitchenRepository) : ViewModel() {
         slot: String,
         onSaved: (Long) -> Unit,
     ) = viewModelScope.launch {
-        val id = repo.saveManualDish(
+        // The recipe goes into the library; the plan gets a reference to it.
+        val id = recipes.saveManualRecipe(
             title = title,
             url = url.ifBlank { null },
-            ingredientLines = ingredientsText.split('\n'),
+            ingredientLines = ingredientsText.lines(),
+        )
+        plan.addToPlan(
+            recipeId = id,
             date = LocalDate.parse(date),
             slot = runCatching { MealSlot.valueOf(slot) }.getOrDefault(MealSlot.DINNER),
         )
@@ -54,7 +62,7 @@ class ManualDishViewModel(private val repo: KitchenRepository) : ViewModel() {
     }
 
     companion object {
-        val Factory = koFactory { ManualDishViewModel(it.repository) }
+        val Factory = koFactory { ManualDishViewModel(it.recipeRepository, it.mealPlanRepository) }
     }
 }
 

@@ -3,8 +3,9 @@ package com.lucca.ko.ui.dish
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
-import com.lucca.ko.data.KitchenRepository
-import com.lucca.ko.data.db.Dish
+import com.lucca.ko.data.db.Recipe
+import com.lucca.ko.data.repo.PantryRepository
+import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.PantryResolver
 import com.lucca.ko.domain.ResolvedIngredient
@@ -16,21 +17,22 @@ import kotlinx.coroutines.launch
 
 data class DishUiState(
     val loading: Boolean = true,
-    val dish: Dish? = null,
+    val dish: Recipe? = null,
     val ingredients: List<ResolvedIngredient> = emptyList(),
     val missingCount: Int = 0,
 )
 
 class DishViewModel(
-    private val repo: KitchenRepository,
+    private val recipes: RecipeRepository,
+    private val pantryRepo: PantryRepository,
     private val dishId: Long,
 ) : ViewModel() {
 
-    val state = combine(repo.dishWithIngredients(dishId), repo.pantry) { dishWith, pantry ->
+    val state = combine(recipes.observeRecipe(dishId), pantryRepo.pantry) { dishWith, pantry ->
         if (dishWith == null) {
             DishUiState(loading = false)
         } else {
-            val resolved = dishWith.ingredients.map { ing ->
+            val resolved = dishWith.orderedIngredients.map { ing ->
                 val (match, availability) = PantryResolver.resolve(
                     ing.normalizedName, ing.pantryItemId, pantry,
                 )
@@ -45,20 +47,24 @@ class DishViewModel(
             }
             DishUiState(
                 loading = false,
-                dish = dishWith.dish,
+                dish = dishWith.recipe,
                 ingredients = resolved,
                 missingCount = resolved.count { it.availability == Availability.MISSING },
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DishUiState())
 
-    fun markRanOut(ingredientId: Long) = viewModelScope.launch { repo.markIngredientRanOut(ingredientId) }
-    fun markHave(ingredientId: Long) = viewModelScope.launch { repo.markIngredientHave(ingredientId) }
-    fun addAllMissingToShopping() = viewModelScope.launch { repo.addMissingIngredientsToShopping(dishId) }
+    fun markRanOut(ingredientId: Long) = viewModelScope.launch { recipes.markIngredientRanOut(ingredientId) }
+    fun markHave(ingredientId: Long) = viewModelScope.launch { recipes.markIngredientHave(ingredientId) }
+    fun addAllMissingToShopping() = viewModelScope.launch { recipes.addMissingIngredientsToShopping(dishId) }
 
     companion object {
         val Factory = koFactory { container ->
-            DishViewModel(container.repository, createSavedStateHandle().get<Long>("dishId") ?: 0L)
+            DishViewModel(
+                recipes = container.recipeRepository,
+                pantryRepo = container.pantryRepository,
+                dishId = createSavedStateHandle().get<Long>("dishId") ?: 0L,
+            )
         }
     }
 }

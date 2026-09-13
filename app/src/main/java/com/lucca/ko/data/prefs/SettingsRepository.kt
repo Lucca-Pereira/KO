@@ -39,15 +39,30 @@ class SettingsRepository(private val context: Context) {
         val model = stringPreferencesKey("ollama_model")
         val count = intPreferencesKey("suggestion_count")
         val normalizationRepaired = booleanPreferencesKey("normalization_repaired_v2")
+        val measuresParsed = booleanPreferencesKey("measures_parsed_v1")
+        val searchBlobsBackfilled = booleanPreferencesKey("search_blobs_backfilled_v1")
     }
 
-    /** One-time flag: existing rows have had their normalizedName recomputed (v0.1.6). */
-    suspend fun isNormalizationRepaired(): Boolean =
-        context.dataStore.data.first()[Keys.normalizationRepaired] ?: false
+    private suspend fun flag(key: Preferences.Key<Boolean>): Boolean =
+        context.dataStore.data.first()[key] ?: false
 
-    suspend fun markNormalizationRepaired() {
-        context.dataStore.edit { it[Keys.normalizationRepaired] = true }
+    private suspend fun setFlag(key: Preferences.Key<Boolean>) {
+        context.dataStore.edit { it[key] = true }
     }
+
+    // One-shot repair flags, read and written by data/repair/StartupRepairs.kt.
+
+    /** Existing rows have had their normalizedName recomputed (v0.1.6). */
+    suspend fun isNormalizationRepaired(): Boolean = flag(Keys.normalizationRepaired)
+    suspend fun markNormalizationRepaired() = setFlag(Keys.normalizationRepaired)
+
+    /** Ingredient `measure` text has been parsed into quantity + unit (v0.3.0). */
+    suspend fun isMeasuresParsed(): Boolean = flag(Keys.measuresParsed)
+    suspend fun markMeasuresParsed() = setFlag(Keys.measuresParsed)
+
+    /** Recipes predating library search have had their searchBlob built (v0.3.0). */
+    suspend fun isSearchBlobsBackfilled(): Boolean = flag(Keys.searchBlobsBackfilled)
+    suspend fun markSearchBlobsBackfilled() = setFlag(Keys.searchBlobsBackfilled)
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(

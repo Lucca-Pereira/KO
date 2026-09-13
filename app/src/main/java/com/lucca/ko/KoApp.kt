@@ -13,8 +13,9 @@ class KoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // One-shot data repairs, each guarded by its own flag; see data/repair/StartupRepairs.kt.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            runCatching { container.repository.repairNormalizationOnce() }
+            container.startupRepairs.runAll()
         }
     }
 }
