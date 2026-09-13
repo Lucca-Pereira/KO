@@ -19,6 +19,12 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    sourceSets {
+        // Exported Room schemas, so migration tests can open historical versions.
+        getByName("test").assets.srcDir("$projectDir/schemas")
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     signingConfigs {
         // A committed, stable key so every build (local + CI) is signed identically and
         // updates install over each other. Not secret for a sideloaded personal app.
@@ -68,6 +74,12 @@ android {
             isReturnDefaultValues = true
         }
     }
+}
+
+ksp {
+    // Writes app/schemas/<db class>/<version>.json on every build. Committed; MigrationTest
+    // needs the historical versions to open a database as it existed before a migration.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
