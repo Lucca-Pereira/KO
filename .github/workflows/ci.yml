@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, rework ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  app:
+    name: Android app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The migration tests run under Robolectric in src/test precisely so this step executes
+      # them. They are the only thing standing between a schema change and someone's pantry.
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Check the exported schema is committed
+        # A schema JSON that was generated but never committed is invisible until months later,
+        # when the migration test for that version turns out to be impossible to write.
+        run: |
+          ./gradlew :app:kspDebugKotlin --stacktrace
+          if ! git diff --quiet -- app/schemas; then
+            echo "::error::app/schemas is out of date. Run ./gradlew :app:kspDebugKotlin and commit the result."
+            git --no-pager diff --stat -- app/schemas
+            exit 1
+          fi
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/ko-kitchen-${GITHUB_REF_NAME}.apk"
+          else
+            cp app/build/outputs/apk/release/app-release.apk "dist/ko-kitchen-latest.apk"
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ko-kitchen-apk
+          path: dist/*.apk
+
+      - name: Attach APK to GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
+
+  server:
+    name: KO brain
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      # None of these touch a network or a model, so they run anywhere.
+      - name: Test
+        run: pytest -q
+
+      - name: Check the food table matches its generator
+        # The same JSON ships in the APK, so a hand-edit here would silently desync the two
+        # sides of nutrition estimation.
+        run: |
+          python tools/build_food_seed.py
+          if ! git diff --quiet -- data/foods_seed.json; then
+            echo "::error::data/foods_seed.json is out of date. Run python tools/build_food_seed.py and commit it."
+            exit 1
+          fi
+          if ! diff -q data/foods_seed.json ../app/src/main/assets/foods_seed.json; then
+            echo "::error::The app's bundled food table differs from the server's. Copy it across."
+            exit 1
+          fi
+
+      - name: Build the container
+        run: docker build -t ko-brain:ci .

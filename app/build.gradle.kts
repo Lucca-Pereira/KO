@@ -46,6 +46,11 @@ android {
         }
         release {
             signingConfig = signingConfigs.getByName("shared")
+            // Deliberately off. Almost everything in this app is reflection-driven --
+            // kotlinx.serialization for the wire DTOs and the navigation routes, Room for the
+            // entities -- so R8 failures surface as a crash on a screen you did not happen to
+            // open, not as a build error. proguard-rules.pro is written and ready; turning it
+            // on is a device-test change, not a config change.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

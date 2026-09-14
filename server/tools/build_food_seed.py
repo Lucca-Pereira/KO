@@ -14,7 +14,6 @@ Run: ``python tools/build_food_seed.py``
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[1] / "data" / "foods_seed.json"
@@ -197,7 +196,10 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
         json.dumps(
-            {"version": 1, "generated_at": int(time.time()), "foods": foods},
+            # No timestamp: the output has to be reproducible, or CI cannot check that the
+            # committed file still matches this table — and a generator nobody verifies is a
+            # generator that quietly stops being the source of truth.
+            {"version": 1, "foods": foods},
             indent=1,
             ensure_ascii=False,
         )
