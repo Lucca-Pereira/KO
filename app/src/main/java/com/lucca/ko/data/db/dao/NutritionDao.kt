@@ -48,9 +48,6 @@ interface FoodDao {
     )
     fun search(query: String, limit: Int = 60): Flow<List<FoodItem>>
 
-    @Query("SELECT * FROM food_items WHERE isSupplement = 1 ORDER BY name COLLATE NOCASE")
-    fun observeSupplementFoods(): Flow<List<FoodItem>>
-
     /** Recently logged foods, for the "log it again" shortcut that is most of real usage. */
     @Query(
         """

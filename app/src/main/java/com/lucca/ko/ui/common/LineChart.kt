@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -94,28 +93,5 @@ fun WeightChart(
                 style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
             )
         }
-    }
-}
-
-/** A bare sparkline, for a small trend next to a number. */
-@Composable
-fun Sparkline(
-    values: List<Double>,
-    modifier: Modifier = Modifier,
-    colour: Color = MaterialTheme.colorScheme.primary,
-) {
-    if (values.size < 2) return
-    val minValue = values.min()
-    val span = (values.max() - minValue).takeIf { it > 0.001 } ?: 1.0
-
-    Canvas(modifier) {
-        val step = size.width / (values.size - 1)
-        val path = Path()
-        values.forEachIndexed { index, value ->
-            val x = step * index
-            val y = size.height - ((value - minValue) / span).toFloat() * size.height
-            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        drawPath(path, colour, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
     }
 }

@@ -41,6 +41,7 @@ import org.robolectric.annotation.Config
  * No network: proposals are written straight into the message row, which is what the streaming
  * layer does anyway once a `proposal` event arrives.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class RecipeChatRepositoryTest {

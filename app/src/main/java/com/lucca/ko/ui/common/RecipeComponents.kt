@@ -119,23 +119,3 @@ fun formatMinutes(minutes: Int): String = when {
     minutes % 60 == 0 -> "${minutes / 60} h"
     else -> "${minutes / 60} h ${minutes % 60} min"
 }
-
-@Composable
-fun LabelledSection(
-    title: String,
-    modifier: Modifier = Modifier,
-    trailing: @Composable (() -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    Column(modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
-            trailing?.invoke()
-        }
-        content()
-    }
-}

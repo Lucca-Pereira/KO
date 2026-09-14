@@ -388,7 +388,3 @@ fun NutritionTarget.toMacroTargets(): MacroTargets = MacroTargets(
     fatG = fatG,
     source = runCatching { TargetSource.valueOf(source) }.getOrDefault(TargetSource.FORMULA),
 )
-
-/** The flow the Today screen needs: entries grouped by when they were eaten. */
-fun List<NutritionEntry>.bySlot(): Map<LogSlot, List<NutritionEntry>> =
-    groupBy { it.slot }.toSortedMap(compareBy { it.ordinal })

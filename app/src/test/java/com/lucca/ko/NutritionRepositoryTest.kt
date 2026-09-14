@@ -45,6 +45,7 @@ import org.robolectric.annotation.Config
  * so correcting a food next month must not rewrite last month's history. Get that wrong and the
  * diary quietly rewrites itself.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class NutritionRepositoryTest {
