@@ -1,0 +1,31 @@
+# KO brain on the NAS.
+#
+# The container binds 0.0.0.0 *inside* its own network namespace; the published port below is
+# what decides who can reach it. Publishing on the Tailscale address means the tailnet can and
+# the LAN cannot — change that IP and you change who has access.
+services:
+  ko-brain:
+    build: .
+    container_name: ko-brain
+    restart: unless-stopped
+    ports:
+      # <tailscale-ip>:<host port>:<container port>
+      - "100.67.219.26:8080:8080"
+    environment:
+      # Ollama runs on the NAS itself, outside this container.
+      KO_OLLAMA_URL: "http://host.docker.internal:11434"
+      KO_API_TOKEN: "${KO_API_TOKEN:?set KO_API_TOKEN in .env}"
+      KO_MODEL_FAST: "${KO_MODEL_FAST:-qwen2.5:3b}"
+      KO_MODEL_CHAT: "${KO_MODEL_CHAT:-qwen2.5:7b-instruct}"
+      KO_MODEL_RECIPE: "${KO_MODEL_RECIPE:-qwen2.5:7b-instruct}"
+      KO_MODEL_NUTRITION: "${KO_MODEL_NUTRITION:-qwen2.5:7b-instruct}"
+      KO_OLLAMA_KEEP_ALIVE: "-1"
+      KO_WARMUP_SECONDS: "600"
+    extra_hosts:
+      # Linux has no host.docker.internal by default; this is what makes the line above work.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ko-brain-cache:/data
+
+volumes:
+  ko-brain-cache:
