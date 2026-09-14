@@ -4,10 +4,14 @@
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <include domain="file" path="datastore/" />
+        <!-- The NAS bearer token. Never goes to the cloud. -->
+        <exclude domain="file" path="datastore/secrets.preferences_pb" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <include domain="file" path="datastore/" />
+        <!-- Excluded here too: a device transfer is still a copy of the secret off the phone. -->
+        <exclude domain="file" path="datastore/secrets.preferences_pb" />
     </device-transfer>
 </data-extraction-rules>

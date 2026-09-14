@@ -48,8 +48,7 @@ class BackupRepository(
         val backup = KoBackupV2(
             exportedAt = System.currentTimeMillis(),
             settings = SettingsV2(
-                ollamaBaseUrl = cfg.ollamaBaseUrl,
-                ollamaModel = cfg.ollamaModel,
+                nasBaseUrl = cfg.nasBaseUrl,
                 suggestionCount = cfg.suggestionCount,
             ),
             pantry = db.pantryDao().getAll().map { it.toV2() },
@@ -99,8 +98,7 @@ class BackupRepository(
         // Search blobs are not in the file; let StartupRepairs rebuild them on next launch.
         if (restoreSettings) {
             settings.update(
-                baseUrl = backup.settings.ollamaBaseUrl,
-                model = backup.settings.ollamaModel,
+                baseUrl = backup.settings.nasBaseUrl,
                 count = backup.settings.suggestionCount,
             )
         }

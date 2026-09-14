@@ -16,9 +16,9 @@ A personal Android app to run your kitchen:
 Ingredients are colour-coded against your pantry: **green** if you have it, **red** if
 you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping list.
 
-The "bot" is **your own [Ollama](https://ollama.com) server** on your home network –
-no cloud account, no API key. It proposes dish ideas; recipe content comes from
-TheMealDB or from you.
+The "bot" is **your own hardware** – a small service on your NAS wrapping
+[Ollama](https://ollama.com), no cloud account and no API key. It proposes dish ideas,
+writes recipes, and answers questions about the one you are cooking.
 
 ## Install
 
@@ -29,6 +29,10 @@ TheMealDB or from you.
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.5.0:** the app now talks to the KO brain service instead of to Ollama
+> directly, so the old server setting does not carry over — it pointed at Ollama's own port.
+> Deploy [`server/`](server/) and set the new URL and token in Settings.
+>
 > **Upgrading to v0.4.0:** the database changes shape on first launch — recipes stop
 > being throwaway attachments to a calendar day and become a library of their own, and
 > duplicate copies of the same TheMealDB meal are merged. Export a backup from
@@ -41,20 +45,22 @@ TheMealDB or from you.
 
 ## Connect the recipe bot
 
-1. On your computer, install Ollama and pull a model:
-   ```bash
-   ollama pull llama3.1
-   ```
-2. Point the app at the server in **Settings → Ollama server URL**:
-   - **Android emulator:** `http://10.0.2.2:11434` (the pre-filled default –
-     `10.0.2.2` is the emulator's alias for the host's `127.0.0.1`).
-   - **Real phone:** start Ollama with `OLLAMA_HOST=0.0.0.0` (Windows: set it as an
-     environment variable and restart Ollama), find your computer's Wi-Fi IP
-     (`ipconfig` / `ip addr`), and use `http://<that-ip>:11434`.
-3. Set the model name to what you pulled and tap **Test connection**.
+The AI lives in [`server/`](server/) — a small service you run on your NAS. It owns every
+prompt, wraps Ollama, and serves both this app and Claude (over MCP). See
+[`server/README.md`](server/README.md) for the deploy.
 
-If the bot is unreachable, suggestions fall back to TheMealDB matches for what is
-in your pantry, so the app still works offline-of-bot.
+Once it is up, in **Settings → Recipe bot**:
+
+1. **Brain URL** — `http://<nas>:8080`. Port 8080, not Ollama's 11434; the app no longer talks
+   to Ollama directly.
+2. **Access token** — the `KO_API_TOKEN` from the server's `.env`.
+3. **Test connection**.
+
+The token is kept in its own store, excluded from both Android's cloud backup and KO's own JSON
+export, so restoring on a new phone asks for it again rather than carrying it around in a file.
+
+If the brain is unreachable a banner says so, once, at the top of every screen — and suggestions
+fall back to matching your pantry against TheMealDB, so the app still does something useful.
 
 ## Build from source
 
@@ -76,9 +82,11 @@ Open the folder in Android Studio and press Run to deploy to a device/emulator.
 
 ## Tech
 
-Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
-DataStore · OkHttp + kotlinx.serialization · Coil · type-safe Navigation ·
-single-module, manual DI. CI in
+**App:** Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
+DataStore · OkHttp + kotlinx.serialization (incl. SSE) · Coil · type-safe Navigation ·
+single-module, manual DI.
+**Server:** Python · FastAPI · FastMCP · Ollama. See [`server/`](server/).
+CI in
 [`.github/workflows/android.yml`](.github/workflows/android.yml) builds the APK and
 attaches it to every `v*` tag.
 

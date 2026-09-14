@@ -1,54 +1,76 @@
 package com.lucca.ko.data.repo
 
 import com.lucca.ko.data.db.dao.PantryDao
+import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.data.remote.MealDbClient
 import com.lucca.ko.data.remote.MealSummary
-import com.lucca.ko.data.remote.OllamaClient
-import com.lucca.ko.data.remote.RecipeIdea
-import kotlinx.coroutines.flow.first
+import com.lucca.ko.data.remote.nas.IdeaDto
+import com.lucca.ko.data.remote.nas.NasClient
+import com.lucca.ko.data.remote.nas.NasStatusMonitor
+import com.lucca.ko.data.remote.nas.PantryEntryDto
+import com.lucca.ko.data.remote.nas.SuggestRequestDto
+import com.lucca.ko.data.remote.nas.TranslateRequestDto
 
 data class SuggestionResult(
-    val usedOllama: Boolean,
-    val ideas: List<RecipeIdea>,
+    val usedBrain: Boolean,
+    val ideas: List<IdeaDto>,
     val meals: List<MealSummary>,
     val note: String? = null,
 )
 
 /**
- * Dish suggestions, and the pantry translation that makes them work for a non-English pantry.
+ * Dish suggestions and pantry translation, both through the NAS brain.
  *
- * Both still talk to Ollama directly; Phase 3 repoints them at the NAS brain service and deletes
- * [OllamaClient]. The TheMealDB fan-out below stays as the offline fallback.
+ * When the brain is unreachable, suggestions fall back to matching the pantry against TheMealDB
+ * directly — worse ideas, but the screen still does something useful. Translation has no such
+ * fallback and is simply reported as unavailable: a fake translation would poison
+ * `PantryItem.searchName`, which every future recipe match depends on.
  */
 class SuggestionRepository(
     private val pantryDao: PantryDao,
+    private val recipeDao: RecipeDao,
     private val mealDb: MealDbClient,
-    private val ollama: OllamaClient,
+    private val nas: NasClient,
+    private val nasStatus: NasStatusMonitor,
     private val settings: SettingsRepository,
 ) {
-    suspend fun testOllama(baseUrl: String): Result<List<String>> = runCatching {
-        ollama.listModels(baseUrl)
+    /** Checks the brain at the given URL, for the Settings "Test connection" button. */
+    suspend fun testConnection(baseUrl: String): Result<String> = runCatching {
+        val health = nas.health(baseUrlOverride = baseUrl)
+        buildString {
+            append("Brain ${health.version} is up")
+            if (!health.ollama.reachable) {
+                append(", but it can't reach Ollama")
+            } else {
+                val models = health.ollama.models
+                append(" with ${models.size} model${if (models.size == 1) "" else "s"}")
+                if (health.ollama.missing.isNotEmpty()) {
+                    append(". Not installed: ${health.ollama.missing.joinToString(", ")}")
+                }
+            }
+        }
     }
 
     /**
-     * Asks the bot to translate every pantry item name into English and stores it as
-     * `PantryItem.searchName`. Returns how many items changed; 0 if the bot is unreachable.
+     * Asks the brain to translate every pantry name into English and stores the result as
+     * `PantryItem.searchName`. Returns how many changed.
      */
     suspend fun translatePantryToEnglish(): Int {
-        val cfg = settings.settings.first()
-        if (!cfg.ollamaConfigured) return 0
         val items = pantryDao.getAll()
         if (items.isEmpty()) return 0
-        val translations = ollama.translateFoods(
-            baseUrl = cfg.ollamaBaseUrl,
-            model = cfg.ollamaModel,
-            names = items.map { it.name },
-        )
-        if (translations.isEmpty()) return 0
+
+        val response = try {
+            nas.translate(TranslateRequestDto(names = items.map { it.name }))
+        } catch (e: Exception) {
+            nasStatus.reportUnreachable(e.message ?: "Couldn't reach the brain.")
+            throw e
+        }
+        nasStatus.reportReachable()
+
         var updated = 0
         items.forEach { item ->
-            val english = translations[item.name]?.takeIf { it.isNotBlank() } ?: return@forEach
+            val english = response.translations[item.name]?.takeIf { it.isNotBlank() } ?: return@forEach
             if (!english.equals(item.searchName, ignoreCase = true)) {
                 pantryDao.update(item.copy(searchName = english))
                 updated++
@@ -57,51 +79,70 @@ class SuggestionRepository(
         return updated
     }
 
-    suspend fun suggestDishes(): SuggestionResult {
-        val cfg = settings.settings.first()
+    suspend fun suggestDishes(constraints: String = ""): SuggestionResult {
+        val cfg = settings.currentSettings()
         val pantryItems = pantryDao.getAll()
-        // Prefer the English alias so bot ideas + TheMealDB search work for a non-English pantry.
-        val pantryNames = pantryItems.map { it.searchName?.takeIf(String::isNotBlank) ?: it.name }
 
-        var usedOllama = false
-        var note: String? = null
-        var ideas: List<RecipeIdea> = emptyList()
+        var ideas: List<IdeaDto> = emptyList()
+        var note: String?
+        var usedBrain = false
 
-        if (cfg.ollamaConfigured) {
-            try {
-                ideas = ollama.suggestRecipes(
-                    baseUrl = cfg.ollamaBaseUrl,
-                    model = cfg.ollamaModel,
-                    pantry = pantryNames,
+        try {
+            val response = nas.suggest(
+                SuggestRequestDto(
+                    pantry = pantryItems.map {
+                        PantryEntryDto(
+                            name = it.name,
+                            searchName = it.searchName,
+                            status = it.status.name,
+                        )
+                    },
                     count = cfg.suggestionCount,
-                )
-                usedOllama = ideas.isNotEmpty()
-                if (ideas.isEmpty()) {
-                    note = "The model didn't return any ideas — showing pantry matches instead."
-                }
-            } catch (e: Exception) {
-                note = "Couldn't reach Ollama (${e.message}). Showing pantry matches instead."
-            }
-        } else {
-            note = "Set your Ollama server in Settings for AI suggestions. Showing pantry matches."
+                    // Don't suggest things already in the library; the point is new ideas.
+                    exclude = recipeDao.getAllRecipes().map { it.title }.filter { it.isNotBlank() },
+                    constraints = constraints,
+                ),
+            )
+            nasStatus.reportReachable()
+            ideas = response.ideas
+            usedBrain = ideas.isNotEmpty()
+            note = response.note
+        } catch (e: Exception) {
+            nasStatus.reportUnreachable(e.message ?: "Couldn't reach the brain.")
+            note = "Couldn't reach the brain (${e.message}). Showing pantry matches instead."
         }
 
+        return SuggestionResult(
+            usedBrain = usedBrain,
+            ideas = ideas,
+            meals = findMeals(ideas, pantryItems.map { it.searchName?.ifBlank { null } ?: it.name }),
+            note = note,
+        )
+    }
+
+    /**
+     * Turns ideas into real TheMealDB hits, falling back to pantry-driven search when there are
+     * no ideas — which is what keeps the screen useful with the brain switched off.
+     */
+    private suspend fun findMeals(
+        ideas: List<IdeaDto>,
+        pantryNames: List<String>,
+    ): List<MealSummary> {
         val meals = LinkedHashMap<String, MealSummary>()
 
-        for (idea in ideas.take(cfg.suggestionCount)) {
-            // Small models often return a whole sentence as the "query"; fall back to the dish
-            // name so the recipe search still lands on something.
-            val terms = listOf(idea.query, idea.dish)
+        for (idea in ideas) {
+            val terms = listOf(idea.query, idea.title)
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .distinct()
-            var hits: List<MealSummary> = emptyList()
             for (term in terms) {
-                hits = runCatching { mealDb.searchByName(term) }.getOrDefault(emptyList())
+                val hits = runCatching { mealDb.searchByName(term) }.getOrDefault(emptyList())
                     .ifEmpty { runCatching { mealDb.filterByIngredient(term) }.getOrDefault(emptyList()) }
-                if (hits.isNotEmpty()) break
+                if (hits.isNotEmpty()) {
+                    hits.take(3).forEach { if (it.id.isNotBlank()) meals.putIfAbsent(it.id, it) }
+                    break
+                }
             }
-            hits.take(3).forEach { if (it.id.isNotBlank()) meals.putIfAbsent(it.id, it) }
         }
 
         if (meals.size < 6) {
@@ -121,11 +162,6 @@ class SuggestionRepository(
             }
         }
 
-        return SuggestionResult(
-            usedOllama = usedOllama,
-            ideas = ideas,
-            meals = meals.values.toList(),
-            note = note,
-        )
+        return meals.values.toList()
     }
 }

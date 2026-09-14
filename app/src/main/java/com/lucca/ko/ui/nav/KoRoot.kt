@@ -1,5 +1,6 @@
 package com.lucca.ko.ui.nav
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -12,8 +13,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -24,6 +27,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.lucca.ko.KoApp
+import com.lucca.ko.ui.common.NasStatusBanner
 import com.lucca.ko.ui.mealsearch.MealSearchScreen
 import com.lucca.ko.ui.pantry.PantryScreen
 import com.lucca.ko.ui.plan.PlanScreen
@@ -65,6 +70,10 @@ private val bottomDests = listOf(Dest.Pantry, Dest.Plan, Dest.Recipes, Dest.Shop
 @Composable
 fun KoRoot() {
     val navController = rememberNavController()
+    // One health check for the whole app; every screen used to invent its own error string, so
+    // one NAS being off looked like five unrelated problems.
+    val nasStatus = LocalContext.current.applicationContext.let { (it as KoApp).container.nasStatus }
+    LaunchedEffect(Unit) { nasStatus.refreshIfStale() }
     val backStack by navController.currentBackStackEntryAsState()
     val currentDestination = backStack?.destination
     val showBottomBar = bottomDests.any { dest ->
@@ -89,88 +98,90 @@ fun KoRoot() {
             }
         },
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = PantryRoute,
-            modifier = Modifier.padding(innerPadding),
-        ) {
-            composable<PantryRoute> { PantryScreen() }
+        Column(Modifier.padding(innerPadding)) {
+            NasStatusBanner(nasStatus)
+            NavHost(
+                navController = navController,
+                startDestination = PantryRoute,
+            ) {
+                composable<PantryRoute> { PantryScreen() }
 
-            composable<PlanRoute> {
-                PlanScreen(
-                    onPickFromLibrary = { d, s -> navController.navigate(RecipePickerRoute(d, s)) },
-                    onAddSuggested = { d, s -> navController.navigate(SuggestRoute(d, s)) },
-                    onSearchMeal = { d, s -> navController.navigate(MealSearchRoute(d, s)) },
-                    onNewRecipe = { _, _ -> navController.navigate(RecipeEditRoute()) },
-                    onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
-                    onOpenSettings = { navController.navigate(SettingsRoute) },
-                )
-            }
+                composable<PlanRoute> {
+                    PlanScreen(
+                        onPickFromLibrary = { d, s -> navController.navigate(RecipePickerRoute(d, s)) },
+                        onAddSuggested = { d, s -> navController.navigate(SuggestRoute(d, s)) },
+                        onSearchMeal = { d, s -> navController.navigate(MealSearchRoute(d, s)) },
+                        onNewRecipe = { _, _ -> navController.navigate(RecipeEditRoute()) },
+                        onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
+                        onOpenSettings = { navController.navigate(SettingsRoute) },
+                    )
+                }
 
-            composable<RecipesRoute> {
-                RecipeListScreen(
-                    onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
-                    onNewRecipe = { navController.navigate(RecipeEditRoute()) },
-                    onSearchMealDb = { navController.navigate(MealSearchRoute()) },
-                    onFindDuplicates = { navController.navigate(DuplicatesRoute) },
-                    onOpenSettings = { navController.navigate(SettingsRoute) },
-                )
-            }
+                composable<RecipesRoute> {
+                    RecipeListScreen(
+                        onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
+                        onNewRecipe = { navController.navigate(RecipeEditRoute()) },
+                        onSearchMealDb = { navController.navigate(MealSearchRoute()) },
+                        onFindDuplicates = { navController.navigate(DuplicatesRoute) },
+                        onOpenSettings = { navController.navigate(SettingsRoute) },
+                    )
+                }
 
-            composable<ShoppingRoute> { ShoppingScreen() }
+                composable<ShoppingRoute> { ShoppingScreen() }
 
-            composable<SettingsRoute> { SettingsScreen() }
+                composable<SettingsRoute> { SettingsScreen() }
 
-            composable<RecipeDetailRoute> {
-                RecipeDetailScreen(
-                    onBack = { navController.popBackStack() },
-                    onEdit = { id -> navController.navigate(RecipeEditRoute(id)) },
-                )
-            }
+                composable<RecipeDetailRoute> {
+                    RecipeDetailScreen(
+                        onBack = { navController.popBackStack() },
+                        onEdit = { id -> navController.navigate(RecipeEditRoute(id)) },
+                    )
+                }
 
-            composable<RecipeEditRoute> {
-                RecipeEditScreen(
-                    onBack = { navController.popBackStack() },
-                    onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
-                )
-            }
+                composable<RecipeEditRoute> {
+                    RecipeEditScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
+                    )
+                }
 
-            composable<RecipePickerRoute> { entry ->
-                val route = entry.toRoute<RecipePickerRoute>()
-                RecipePickerScreen(
-                    date = route.date,
-                    slot = route.slot,
-                    dayLabel = dayLabel(route.date, route.slot),
-                    onBack = { navController.popBackStack() },
-                    onAdded = { navController.popBackStack() },
-                )
-            }
+                composable<RecipePickerRoute> { entry ->
+                    val route = entry.toRoute<RecipePickerRoute>()
+                    RecipePickerScreen(
+                        date = route.date,
+                        slot = route.slot,
+                        dayLabel = dayLabel(route.date, route.slot),
+                        onBack = { navController.popBackStack() },
+                        onAdded = { navController.popBackStack() },
+                    )
+                }
 
-            composable<DuplicatesRoute> {
-                DuplicatesScreen(
-                    onBack = { navController.popBackStack() },
-                    onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
-                )
-            }
+                composable<DuplicatesRoute> {
+                    DuplicatesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
+                    )
+                }
 
-            composable<SuggestRoute> { entry ->
-                val route = entry.toRoute<SuggestRoute>()
-                SuggestScreen(
-                    date = route.date,
-                    slot = route.slot,
-                    onBack = { navController.popBackStack() },
-                    onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
-                )
-            }
+                composable<SuggestRoute> { entry ->
+                    val route = entry.toRoute<SuggestRoute>()
+                    SuggestScreen(
+                        date = route.date,
+                        slot = route.slot,
+                        onBack = { navController.popBackStack() },
+                        onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
+                    )
+                }
 
-            composable<MealSearchRoute> { entry ->
-                val route = entry.toRoute<MealSearchRoute>()
-                MealSearchScreen(
-                    date = route.date,
-                    slot = route.slot,
-                    onBack = { navController.popBackStack() },
-                    onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
-                )
+                composable<MealSearchRoute> { entry ->
+                    val route = entry.toRoute<MealSearchRoute>()
+                    MealSearchScreen(
+                        date = route.date,
+                        slot = route.slot,
+                        onBack = { navController.popBackStack() },
+                        onSaved = { id -> navController.openRecipeReplacingCurrent(id) },
+                    )
+                }
             }
         }
     }

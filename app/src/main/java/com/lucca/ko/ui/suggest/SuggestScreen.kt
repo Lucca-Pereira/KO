@@ -113,12 +113,12 @@ fun SuggestScreen(
                                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp),
                                 )
                             }
-                            items(ideas, key = { "idea-" + it.dish }) { idea ->
+                            items(ideas, key = { "idea-" + it.title }) { idea ->
                                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                                    Text(idea.dish, style = MaterialTheme.typography.bodyLarge)
-                                    if (idea.reason.isNotBlank()) {
+                                    Text(idea.title, style = MaterialTheme.typography.bodyLarge)
+                                    if (idea.why.isNotBlank()) {
                                         Text(
-                                            idea.reason,
+                                            idea.why,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontStyle = FontStyle.Italic,

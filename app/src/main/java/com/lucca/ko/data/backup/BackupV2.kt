@@ -126,8 +126,7 @@ data class ShoppingListItemV2(
  */
 @Serializable
 data class SettingsV2(
-    val ollamaBaseUrl: String = "",
-    val ollamaModel: String = "",
+    val nasBaseUrl: String = "",
     val suggestionCount: Int = 5,
 )
 

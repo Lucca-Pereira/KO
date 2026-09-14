@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,13 +13,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,10 +57,13 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
     val backup by vm.backup.collectAsStateWithLifecycle()
     val translate by vm.translate.collectAsStateWithLifecycle()
 
-    var url by remember { mutableStateOf(settings.ollamaBaseUrl) }
-    var model by remember { mutableStateOf(settings.ollamaModel) }
-    LaunchedEffect(settings.ollamaBaseUrl) { if (url.isBlank()) url = settings.ollamaBaseUrl }
-    LaunchedEffect(settings.ollamaModel) { if (model.isBlank()) model = settings.ollamaModel }
+    val token by vm.token.collectAsStateWithLifecycle()
+
+    var url by remember { mutableStateOf(settings.nasBaseUrl) }
+    var tokenText by remember { mutableStateOf(token) }
+    var tokenVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(settings.nasBaseUrl) { if (url.isBlank()) url = settings.nasBaseUrl }
+    LaunchedEffect(token) { if (tokenText.isBlank()) tokenText = token }
 
     val context = LocalContext.current
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -120,11 +128,11 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Recipe bot (Ollama)", style = MaterialTheme.typography.titleMedium)
+            Text("Recipe bot", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Defaults to the home NAS over Tailscale. The Ollama host must run with " +
-                    "OLLAMA_HOST=0.0.0.0 to be reachable from the phone. Use Test connection " +
-                    "below, then tap a model to use it.",
+                "The KO brain service on your NAS. It talks to Ollama for you, so the model " +
+                    "settings live there, not here — which is why fixing a prompt no longer " +
+                    "needs a new version of this app.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -132,28 +140,45 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it; vm.setBaseUrl(it) },
-                label = { Text("Ollama server URL") },
+                label = { Text("Brain URL") },
+                supportingText = { Text("Port 8080, not Ollama's 11434") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = model,
-                onValueChange = { model = it; vm.setModel(it) },
-                label = { Text("Model name") },
+                value = tokenText,
+                onValueChange = { tokenText = it; vm.setToken(it) },
+                label = { Text("Access token") },
+                supportingText = { Text("KO_API_TOKEN from the server's .env") },
                 singleLine = true,
+                visualTransformation = if (tokenVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                        Icon(
+                            if (tokenVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (tokenVisible) "Hide token" else "Show token",
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedButton(
                     onClick = { vm.testConnection(url) },
-                    enabled = url.isNotBlank() && test != com.lucca.ko.ui.settings.TestState.Running,
+                    enabled = url.isNotBlank() && test != TestState.Running,
                 ) { Text("Test connection") }
                 when (val t = test) {
                     is TestState.Running -> CircularProgressIndicator(Modifier.padding(4.dp))
                     is TestState.Ok -> Text(
-                        if (t.models.isEmpty()) "Connected — no models installed"
-                        else "Connected · ${t.models.size} model(s)",
+                        t.message,
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -163,22 +188,6 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                         style = MaterialTheme.typography.bodySmall,
                     )
                     TestState.Idle -> {}
-                }
-            }
-            (test as? TestState.Ok)?.takeIf { it.models.isNotEmpty() }?.let { ok ->
-                Text(
-                    "Tap an installed model to use it:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ok.models.forEach { m ->
-                        FilterChip(
-                            selected = m == model,
-                            onClick = { model = m; vm.setModel(m) },
-                            label = { Text(m) },
-                        )
-                    }
                 }
             }
 

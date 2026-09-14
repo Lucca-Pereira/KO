@@ -44,11 +44,10 @@ object BackupUpgrade {
 
         return KoBackupV2(
             exportedAt = v1.exportedAt,
-            settings = SettingsV2(
-                ollamaBaseUrl = v1.settings.ollamaBaseUrl,
-                ollamaModel = v1.settings.ollamaModel,
-                suggestionCount = v1.settings.suggestionCount,
-            ),
+            // Deliberately not carrying v1's Ollama URL forward: it points at Ollama's own
+            // port, which is not where the brain service lives, so restoring it would hand the
+            // user a broken configuration that looks deliberate. Only the count survives.
+            settings = SettingsV2(suggestionCount = v1.settings.suggestionCount),
             pantry = v1.pantry.map {
                 PantryItemV2(
                     id = it.id,

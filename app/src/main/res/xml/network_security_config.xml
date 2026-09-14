@@ -1,11 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is allowed only where it is actually needed: the KO brain and Ollama on the home
+  NAS, reached over Tailscale. Cleartext inside a WireGuard tunnel is fine; cleartext everywhere
+  is not, and the NAS bearer token travels in a header on those requests.
+
+  This replaces a blanket `cleartextTrafficPermitted="true"` on the base config.
+-->
 <network-security-config>
-    <!-- The user points the app at their own Ollama server by IP (e.g.
-         http://192.168.1.20:11434), which is plain HTTP on the LAN, so cleartext
-         must be allowed. TheMealDB and recipe links are still fetched over HTTPS. -->
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- The NAS's Tailscale address. -->
+        <domain includeSubdomains="false">100.67.219.26</domain>
+        <!-- MagicDNS names, for when the IP changes. -->
+        <domain includeSubdomains="true">ts.net</domain>
+        <!-- Private ranges, so a LAN address still works if Tailscale is down. -->
+        <domain includeSubdomains="false">192.168.1.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- The Android emulator's alias for the host machine. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
 </network-security-config>
