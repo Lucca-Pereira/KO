@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import com.lucca.ko.data.repo.RecipeChatRepository
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.domain.recipe.IngredientDraft
 import com.lucca.ko.domain.recipe.RecipeDraft
@@ -32,6 +33,7 @@ data class RecipeEditUiState(
 
 class RecipeEditViewModel(
     private val recipes: RecipeRepository,
+    private val chat: RecipeChatRepository,
     private val recipeId: Long,
 ) : ViewModel() {
 
@@ -148,7 +150,16 @@ class RecipeEditViewModel(
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            runCatching { recipes.saveDraft(draft) }
+            runCatching {
+                // Snapshot before overwriting, so a save you regret is one tap from undo — the
+                // same safety net an accepted AI edit gets.
+                if (!draft.isNew) {
+                    recipes.observeRecipe(draft.id).first()?.let {
+                        chat.snapshot(draft.id, it, reason = "manual edit")
+                    }
+                }
+                recipes.saveDraft(draft)
+            }
                 .onSuccess { id -> _state.update { it.copy(saving = false, savedId = id) } }
                 .onFailure { e ->
                     _state.update {
@@ -162,6 +173,7 @@ class RecipeEditViewModel(
         val Factory = koFactory { container ->
             RecipeEditViewModel(
                 recipes = container.recipeRepository,
+                chat = container.recipeChatRepository,
                 recipeId = createSavedStateHandle().recipeId(),
             )
         }

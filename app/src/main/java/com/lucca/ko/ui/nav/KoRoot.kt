@@ -36,6 +36,7 @@ import com.lucca.ko.ui.recipes.DuplicatesScreen
 import com.lucca.ko.ui.recipes.RecipeDetailScreen
 import com.lucca.ko.ui.recipes.RecipeListScreen
 import com.lucca.ko.ui.recipes.RecipePickerScreen
+import com.lucca.ko.ui.recipes.chat.RecipeChatScreen
 import com.lucca.ko.ui.recipes.edit.RecipeEditScreen
 import com.lucca.ko.ui.settings.SettingsScreen
 import com.lucca.ko.ui.shopping.ShoppingScreen
@@ -135,7 +136,12 @@ fun KoRoot() {
                     RecipeDetailScreen(
                         onBack = { navController.popBackStack() },
                         onEdit = { id -> navController.navigate(RecipeEditRoute(id)) },
+                        onChat = { id -> navController.navigate(RecipeChatRoute(id)) },
                     )
+                }
+
+                composable<RecipeChatRoute> {
+                    RecipeChatScreen(onBack = { navController.popBackStack() })
                 }
 
                 composable<RecipeEditRoute> {

@@ -11,6 +11,7 @@ import com.lucca.ko.data.remote.nas.NasStatusMonitor
 import com.lucca.ko.data.repair.StartupRepairs
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.PantryRepository
+import com.lucca.ko.data.repo.RecipeChatRepository
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SuggestionRepository
@@ -84,6 +85,17 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
             shoppingDao = database.shoppingDao(),
             mealPlanDao = database.mealPlanDao(),
             mealDb = mealDb,
+        )
+    }
+
+    val recipeChatRepository: RecipeChatRepository by lazy {
+        RecipeChatRepository(
+            chatDao = database.chatDao(),
+            recipeDao = database.recipeDao(),
+            pantryDao = database.pantryDao(),
+            recipes = recipeRepository,
+            nas = nasClient,
+            nasStatus = nasStatus,
         )
     }
 

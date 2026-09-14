@@ -10,6 +10,9 @@ A personal Android app to run your kitchen:
 - **Recipes** – your own library. Recipes are yours to keep: save, favourite, tag and
   search them, and plan the same one on as many days as you like. Every recipe is fully
   editable – photo, servings, times, tags, notes, ingredients and step-by-step method.
+- **Ask about a recipe** – a conversation attached to each one. Swaps, scaling, technique,
+  what to do without an oven. If you ask for a change it comes back as a proposal you review
+  line by line before it is applied, and every applied change can be undone.
 - **Shopping list** – auto-filled from anything that runs out, plus manual entries.
   Tick an item off and it goes back to the pantry as *In stock*.
 

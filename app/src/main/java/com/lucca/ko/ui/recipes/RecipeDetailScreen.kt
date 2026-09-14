@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
@@ -77,6 +78,7 @@ import java.util.Locale
 fun RecipeDetailScreen(
     onBack: () -> Unit,
     onEdit: (Long) -> Unit,
+    onChat: (Long) -> Unit,
     vm: RecipeDetailViewModel = viewModel(factory = RecipeDetailViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -168,6 +170,12 @@ fun RecipeDetailScreen(
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
+                            )
+                        }
+                        IconButton(onClick = { onChat(recipe.id) }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Chat,
+                                contentDescription = "Ask about this recipe",
                             )
                         }
                         IconButton(onClick = { onEdit(recipe.id) }) {

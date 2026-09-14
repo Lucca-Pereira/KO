@@ -32,6 +32,8 @@ import kotlinx.serialization.Serializable
 /** [recipeId] `0L` creates a new recipe. */
 @Serializable data class RecipeEditRoute(val recipeId: Long = 0L)
 
+@Serializable data class RecipeChatRoute(val recipeId: Long)
+
 /** Pick an existing library recipe to plan on [date] / [slot]. */
 @Serializable data class RecipePickerRoute(val date: String, val slot: String)
 

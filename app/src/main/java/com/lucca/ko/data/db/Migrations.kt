@@ -174,5 +174,51 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/**
+ * v3 -> v4: per-recipe chat, and an undo stack.
+ *
+ * Purely additive, which is the whole point of having split the risky rebuild into its own
+ * migration: there is nothing here that can lose data.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_chat_messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                dishId          INTEGER NOT NULL,
+                role            TEXT    NOT NULL,
+                content         TEXT    NOT NULL,
+                createdAt       INTEGER NOT NULL,
+                proposalJson    TEXT,
+                proposalSummary TEXT,
+                proposalStatus  TEXT,
+                FOREIGN KEY(dishId) REFERENCES dishes(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_recipe_chat_messages_dishId " +
+                "ON recipe_chat_messages (dishId)",
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_revisions (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                dishId    INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL,
+                reason    TEXT    NOT NULL,
+                snapshot  TEXT    NOT NULL,
+                FOREIGN KEY(dishId) REFERENCES dishes(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_recipe_revisions_dishId ON recipe_revisions (dishId)",
+        )
+    }
+}
+
 /** Every migration the database knows about, in order. */
-val KO_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+val KO_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)

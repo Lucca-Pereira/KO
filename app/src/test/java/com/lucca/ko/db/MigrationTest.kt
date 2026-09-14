@@ -5,6 +5,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.platform.app.InstrumentationRegistry
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.db.MIGRATION_2_3
+import com.lucca.ko.data.db.MIGRATION_3_4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -189,6 +190,52 @@ class MigrationTest {
                 2,
                 db.count("SELECT COUNT(*) FROM dishes WHERE title = \"Abuela's stew\""),
             )
+        }
+    }
+    // ---- 3 -> 4: chat and revisions -----------------------------------------------
+
+    @Test
+    fun migrate3To4_validatesAgainstTheEntities() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        helper.runMigrationsAndValidate(TEST_DB, 4, true, MIGRATION_2_3, MIGRATION_3_4).close()
+    }
+
+    @Test
+    fun migrate3To4_keepsEverythingFromBefore() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        helper.runMigrationsAndValidate(TEST_DB, 4, true, MIGRATION_2_3, MIGRATION_3_4).use { db ->
+            // Purely additive, so nothing the 2 -> 3 migration produced should have moved.
+            assertEquals(3, db.count("SELECT COUNT(*) FROM pantry_items"))
+            assertEquals(2, db.count("SELECT COUNT(*) FROM dishes"))
+            assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM recipe_chat_messages"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM recipe_revisions"))
+        }
+    }
+
+    @Test
+    fun migrate3To4_deletingARecipeTakesItsChatWithIt() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        helper.runMigrationsAndValidate(TEST_DB, 4, true, MIGRATION_2_3, MIGRATION_3_4).use { db ->
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL(
+                "INSERT INTO recipe_chat_messages (dishId, role, content, createdAt) " +
+                    "VALUES (3, 'USER', 'can I use sweet potato?', 1)",
+            )
+            db.execSQL(
+                "INSERT INTO recipe_revisions (dishId, createdAt, reason, snapshot) " +
+                    "VALUES (3, 1, 'chat edit', '{}')",
+            )
+            assertEquals(1, db.count("SELECT COUNT(*) FROM recipe_chat_messages"))
+
+            db.execSQL("DELETE FROM dishes WHERE id = 3")
+
+            // CASCADE here, unlike meal_plan's SET NULL: a conversation about a recipe that no
+            // longer exists is not history worth keeping, it is orphaned noise.
+            assertEquals(0, db.count("SELECT COUNT(*) FROM recipe_chat_messages"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM recipe_revisions"))
+            // The plan entry, by contrast, survives.
+            assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
         }
     }
 }

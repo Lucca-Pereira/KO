@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import com.lucca.ko.data.db.dao.ChatDao
 import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.RecipeDao
@@ -23,6 +24,13 @@ class Converters {
     @TypeConverter fun stringToRecipeSource(s: String?): RecipeSource? =
         s?.let { runCatching { RecipeSource.valueOf(it) }.getOrDefault(RecipeSource.MANUAL) }
 
+    @TypeConverter fun chatRoleToString(s: ChatRole): String = s.name
+    @TypeConverter fun stringToChatRole(s: String): ChatRole = ChatRole.valueOf(s)
+
+    @TypeConverter fun proposalStatusToString(s: ProposalStatus?): String? = s?.name
+    @TypeConverter fun stringToProposalStatus(s: String?): ProposalStatus? =
+        s?.let { runCatching { ProposalStatus.valueOf(it) }.getOrNull() }
+
     @TypeConverter fun macroSourceToString(s: MacroSource?): String? = s?.name
     @TypeConverter fun stringToMacroSource(s: String?): MacroSource? =
         s?.let { runCatching { MacroSource.valueOf(it) }.getOrNull() }
@@ -38,8 +46,10 @@ class Converters {
         RecipeTag::class,
         MealPlanEntry::class,
         ShoppingListItem::class,
+        RecipeChatMessage::class,
+        RecipeRevision::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -48,6 +58,7 @@ abstract class KoDatabase : RoomDatabase() {
     abstract fun recipeDao(): RecipeDao
     abstract fun tagDao(): TagDao
     abstract fun mealPlanDao(): MealPlanDao
+    abstract fun chatDao(): ChatDao
     abstract fun shoppingDao(): ShoppingDao
 
     companion object {

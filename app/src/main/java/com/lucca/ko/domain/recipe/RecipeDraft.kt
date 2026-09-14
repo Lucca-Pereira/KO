@@ -8,6 +8,7 @@ import com.lucca.ko.data.db.RecipeStep
 import com.lucca.ko.data.db.relations.RecipeWithDetails
 import com.lucca.ko.domain.IngredientMatcher
 import com.lucca.ko.domain.units.MeasureParser
+import kotlinx.serialization.Serializable
 
 /**
  * What the editor holds while you are typing: everything about a recipe, as text, before it
@@ -17,6 +18,7 @@ import com.lucca.ko.domain.units.MeasureParser
  * spent time on, so the whole draft -> entities conversion lives here rather than in a
  * ViewModel where it cannot be tested.
  */
+@Serializable
 data class RecipeDraft(
     val id: Long = 0L,
     val title: String = "",
@@ -63,6 +65,7 @@ data class RecipeDraft(
  * [key] is a stable identity for Compose and drag-reorder. It is the row id for saved rows and a
  * negative counter for unsaved ones, so the two can never collide.
  */
+@Serializable
 data class IngredientDraft(
     val key: Long,
     val name: String = "",
@@ -76,8 +79,13 @@ data class IngredientDraft(
 
     /** What the parser makes of [amount], for the hint under the field. */
     val parsed get() = MeasureParser.parse(amount)
+
+    // Note: `parsed`, `isBlank` and friends are computed properties with no backing field, so
+    // they are invisible to the serializer. A draft round-trips through the undo snapshot as
+    // exactly the text the user typed.
 }
 
+@Serializable
 data class StepDraft(
     val key: Long,
     val text: String = "",

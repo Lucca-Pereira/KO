@@ -17,6 +17,14 @@ enum class MealSlot { BREAKFAST, LUNCH, DINNER, OTHER }
 @Serializable
 enum class RecipeSource { MEALDB, MANUAL, AI, IMPORT }
 
+/** Who said it, in a recipe chat. */
+@Serializable
+enum class ChatRole { USER, ASSISTANT }
+
+/** What became of an edit the model offered. */
+@Serializable
+enum class ProposalStatus { PENDING, ACCEPTED, REJECTED }
+
 /** How a recipe's per-serving macros were arrived at. */
 @Serializable
 enum class MacroSource { AI, COMPUTED, MANUAL }
@@ -187,6 +195,66 @@ data class Tag(
 data class RecipeTag(
     val dishId: Long,
     val tagId: Long,
+)
+
+/**
+ * One message in a recipe's conversation.
+ *
+ * An assistant message may carry a [proposalJson] — a whole replacement recipe the model is
+ * offering. It is stored as JSON rather than as rows because it is not part of the recipe until
+ * accepted, and a rejected proposal should leave nothing behind.
+ */
+@Entity(
+    tableName = "recipe_chat_messages",
+    foreignKeys = [
+        ForeignKey(
+            entity = Recipe::class,
+            parentColumns = ["id"],
+            childColumns = ["dishId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("dishId")],
+)
+data class RecipeChatMessage(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dishId: Long,
+    val role: ChatRole,
+    val content: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    /** A serialized replacement recipe, when the model offered one. */
+    val proposalJson: String? = null,
+    val proposalSummary: String? = null,
+    val proposalStatus: ProposalStatus? = null,
+)
+
+/**
+ * A recipe as it was before something changed it.
+ *
+ * Cheap insurance: one JSON blob written before every accepted AI edit and every save from the
+ * editor means a mangled recipe is one tap from undo. Trimmed to the most recent few per recipe,
+ * because this is an undo stack, not a history feature.
+ */
+@Entity(
+    tableName = "recipe_revisions",
+    foreignKeys = [
+        ForeignKey(
+            entity = Recipe::class,
+            parentColumns = ["id"],
+            childColumns = ["dishId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("dishId")],
+)
+data class RecipeRevision(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dishId: Long,
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Why the snapshot was taken: "chat edit", "manual edit". */
+    val reason: String,
+    /** The full recipe, serialized, as it was before the change. */
+    val snapshot: String,
 )
 
 /**
