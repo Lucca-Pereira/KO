@@ -13,8 +13,8 @@ android {
         applicationId = "com.lucca.ko"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.6.0"
+        versionCode = 14
+        versionName = "0.7.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -118,6 +118,7 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
+    implementation(libs.play.services.code.scanner)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

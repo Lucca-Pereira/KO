@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -88,6 +90,15 @@ fun RecipeDetailScreen(
     var planning by remember { mutableStateOf(false) }
     var justPlanned by remember { mutableStateOf<String?>(null) }
     val snackbarHost = remember { SnackbarHostState() }
+    val estimating by vm.estimating.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHost.showSnackbar(it)
+            vm.clearMessage()
+        }
+    }
 
     LaunchedEffect(deleted) { if (deleted) onBack() }
     // The plan count is only read once per load, so refresh it when we come back from planning.
@@ -259,6 +270,20 @@ fun RecipeDetailScreen(
                             Text(recipe.notes, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+
+                item {
+                    NutritionCard(
+                        kcal = recipe.kcalPerServing,
+                        proteinG = recipe.proteinG,
+                        carbsG = recipe.carbsG,
+                        fatG = recipe.fatG,
+                        note = recipe.macroNote,
+                        servings = recipe.servings,
+                        estimating = estimating,
+                        onEstimate = vm::estimateMacros,
+                        onLog = { vm.logServings(1.0) },
+                    )
                 }
 
                 item {
@@ -464,6 +489,71 @@ private fun PlanTargetSheet(
                 onClick = { onConfirm(date, slot) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Add") }
+        }
+    }
+}
+
+/**
+ * Per-serving macros, or an offer to work them out.
+ *
+ * The estimate is table-first on the server: ingredients it recognises are looked up and only the
+ * rest are guessed by a model, which is why the note under the number says how much of the recipe
+ * was actually accounted for. A calorie figure with no provenance is worse than none.
+ */
+@Composable
+private fun NutritionCard(
+    kcal: Double?,
+    proteinG: Double?,
+    carbsG: Double?,
+    fatG: Double?,
+    note: String?,
+    servings: Int,
+    estimating: Boolean,
+    onEstimate: () -> Unit,
+    onLog: () -> Unit,
+) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Per serving", style = MaterialTheme.typography.labelMedium)
+            if (kcal == null) {
+                Text(
+                    "Macros not worked out yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                Text(
+                    "${kcal.toInt()} kcal",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "P ${proteinG?.toInt() ?: 0} · C ${carbsG?.toInt() ?: 0} · " +
+                        "F ${fatG?.toInt() ?: 0}   (serves $servings)",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (!note.isNullOrBlank()) {
+                    Text(note, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onEstimate, enabled = !estimating) {
+                    Text(
+                        when {
+                            estimating -> "Working it out…"
+                            kcal == null -> "Work out macros"
+                            else -> "Recalculate"
+                        },
+                    )
+                }
+                if (kcal != null) {
+                    TextButton(onClick = onLog) { Text("Log a serving") }
+                }
+            }
         }
     }
 }

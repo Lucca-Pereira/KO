@@ -41,3 +41,14 @@ import kotlinx.serialization.Serializable
 @Serializable data class MealSearchRoute(val date: String = "", val slot: String = "")
 
 @Serializable data class SuggestRoute(val date: String = "", val slot: String = "")
+
+// ---- Nutrition ----------------------------------------------------------------------
+
+@Serializable data object NutritionRoute
+
+@Serializable data object ProfileRoute
+
+@Serializable data object SupplementsRoute
+
+/** [foodId] `0L` creates one; [barcode] prefills it after a scan that found no nutrition. */
+@Serializable data class FoodEditRoute(val foodId: Long = 0L, val barcode: String = "")

@@ -139,7 +139,8 @@ class SettingsViewModel(
             .onSuccess {
                 _backup.value = BackupState.Done(
                     "Restored ${it.pantry} pantry · ${it.recipes} recipes · " +
-                        "${it.plan} planned · ${it.shopping} shopping.",
+                        "${it.plan} planned · ${it.shopping} shopping" +
+                        if (it.loggedDays > 0) " · ${it.loggedDays} days logged." else ".",
                 )
             }
             .onFailure { _backup.value = BackupState.Failed(it.message ?: "Import failed.") }

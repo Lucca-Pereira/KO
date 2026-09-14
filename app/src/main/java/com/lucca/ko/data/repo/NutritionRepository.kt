@@ -1,0 +1,394 @@
+package com.lucca.ko.data.repo
+
+import com.lucca.ko.data.db.FoodItem
+import com.lucca.ko.data.db.FoodSource
+import com.lucca.ko.data.db.LogSlot
+import com.lucca.ko.data.db.LogSource
+import com.lucca.ko.data.db.NutritionEntry
+import com.lucca.ko.data.db.NutritionTarget
+import com.lucca.ko.data.db.dao.BodyDao
+import com.lucca.ko.data.db.dao.DayTotals
+import com.lucca.ko.data.db.dao.FoodDao
+import com.lucca.ko.data.db.dao.NutritionDao
+import com.lucca.ko.data.db.dao.RecipeDao
+import com.lucca.ko.data.prefs.ProfileRepository
+import com.lucca.ko.data.remote.nas.EstimateRequestDto
+import com.lucca.ko.data.remote.nas.NasClient
+import com.lucca.ko.data.remote.nas.NasStatusMonitor
+import com.lucca.ko.data.remote.nas.NutritionIngredientDto
+import com.lucca.ko.domain.IngredientMatcher
+import com.lucca.ko.domain.nutrition.AdaptiveTdee
+import com.lucca.ko.domain.nutrition.DatedValue
+import com.lucca.ko.domain.nutrition.EnergyCalculator
+import com.lucca.ko.domain.nutrition.MacroTargets
+import com.lucca.ko.domain.nutrition.Per100g
+import com.lucca.ko.domain.nutrition.PortionMath
+import com.lucca.ko.domain.nutrition.TargetSource
+import com.lucca.ko.domain.nutrition.UserProfile
+import com.lucca.ko.domain.nutrition.WeightTrend
+import java.time.LocalDate
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+
+/** What a recipe's macro estimate came back as. */
+data class RecipeEstimate(
+    val perServingKcal: Double,
+    val proteinG: Double,
+    val carbsG: Double,
+    val fatG: Double,
+    /** 0..1 — how much of the recipe the estimate actually accounts for. */
+    val coverage: Double,
+    val note: String,
+)
+
+/** The day's target plus how it was arrived at. */
+data class TargetWithProvenance(
+    val targets: MacroTargets,
+    val explanation: String,
+)
+
+class NutritionRepository(
+    private val foodDao: FoodDao,
+    private val nutritionDao: NutritionDao,
+    private val bodyDao: BodyDao,
+    private val recipeDao: RecipeDao,
+    private val profileRepo: ProfileRepository,
+    private val nas: NasClient,
+    private val nasStatus: NasStatusMonitor,
+) {
+    // ---- Reading ---------------------------------------------------------------------
+
+    fun observeDay(date: LocalDate): Flow<List<NutritionEntry>> =
+        nutritionDao.observeDay(date.toString())
+
+    fun observeDayTotals(date: LocalDate): Flow<DayTotals> =
+        nutritionDao.observeDayTotals(date.toString())
+
+    fun observeTarget(date: LocalDate): Flow<NutritionTarget?> =
+        nutritionDao.observeTargetOn(date.toString())
+
+    fun searchFoods(query: String): Flow<List<FoodItem>> = foodDao.search(query.trim())
+
+    fun observeRecentFoods(): Flow<List<FoodItem>> = foodDao.observeRecent()
+
+    suspend fun foodById(id: Long): FoodItem? = foodDao.byId(id)
+
+    // ---- Logging ---------------------------------------------------------------------
+
+    /**
+     * Logs a food by weight.
+     *
+     * The entry stores its own macros, not a pointer to the food's current ones: correcting a
+     * food next month must not silently rewrite this line.
+     */
+    suspend fun logFood(
+        food: FoodItem,
+        grams: Double,
+        date: LocalDate,
+        slot: LogSlot,
+    ): Long {
+        val macros = PortionMath.macrosFor(food.toPer100g(), grams)
+        return nutritionDao.insert(
+            NutritionEntry(
+                date = date.toString(),
+                slot = slot,
+                sourceType = if (food.isSupplement) LogSource.SUPPLEMENT else LogSource.FOOD,
+                foodItemId = food.id,
+                label = listOfNotNull(food.brand, food.name).joinToString(" "),
+                grams = grams,
+                servings = PortionMath.servingsFor(grams, food.servingGrams),
+                kcal = macros.kcal,
+                proteinG = macros.proteinG,
+                carbsG = macros.carbsG,
+                fatG = macros.fatG,
+                fiberG = macros.fiberG.takeIf { it > 0 },
+            ),
+        )
+    }
+
+    /** Logs a portion of a recipe, using its stored per-serving estimate. */
+    suspend fun logRecipe(
+        recipeId: Long,
+        servings: Double,
+        date: LocalDate,
+        slot: LogSlot,
+    ): Long? {
+        val recipe = recipeDao.recipeById(recipeId) ?: return null
+        val kcal = recipe.kcalPerServing ?: return null
+        return nutritionDao.insert(
+            NutritionEntry(
+                date = date.toString(),
+                slot = slot,
+                sourceType = LogSource.RECIPE,
+                dishId = recipeId,
+                label = recipe.title,
+                servings = servings,
+                kcal = kcal * servings,
+                proteinG = (recipe.proteinG ?: 0.0) * servings,
+                carbsG = (recipe.carbsG ?: 0.0) * servings,
+                fatG = (recipe.fatG ?: 0.0) * servings,
+            ),
+        )
+    }
+
+    /** A calorie figure typed straight in, for anything not worth looking up. */
+    suspend fun logQuick(
+        label: String,
+        kcal: Double,
+        proteinG: Double = 0.0,
+        carbsG: Double = 0.0,
+        fatG: Double = 0.0,
+        date: LocalDate,
+        slot: LogSlot,
+    ): Long = nutritionDao.insert(
+        NutritionEntry(
+            date = date.toString(),
+            slot = slot,
+            sourceType = LogSource.QUICK,
+            label = label.trim().ifEmpty { "Quick entry" },
+            kcal = kcal,
+            proteinG = proteinG,
+            carbsG = carbsG,
+            fatG = fatG,
+        ),
+    )
+
+    suspend fun deleteEntry(id: Long) = nutritionDao.delete(id)
+
+    suspend fun updateEntry(entry: NutritionEntry) = nutritionDao.update(entry)
+
+    // ---- Foods ------------------------------------------------------------------------
+
+    suspend fun saveFood(food: FoodItem): Long = foodDao.upsert(
+        food.copy(
+            normalizedName = IngredientMatcher.normalize(food.name)
+                .ifBlank { food.name.lowercase() },
+            updatedAt = System.currentTimeMillis(),
+        ),
+    )
+
+    suspend fun toggleFoodFavourite(food: FoodItem) =
+        foodDao.update(food.copy(isFavourite = !food.isFavourite))
+
+    suspend fun deleteFood(id: Long) = foodDao.delete(id)
+
+    /**
+     * Looks a barcode up: the local table first, then the brain, then Open Food Facts directly.
+     *
+     * The direct fallback is the opposite call from the AI features, and for a concrete reason:
+     * the failure case here is standing in a shop with the NAS unreachable, which is exactly
+     * when you need it.
+     */
+    suspend fun lookupBarcode(barcode: String): FoodItem? {
+        foodDao.byBarcode(barcode)?.let { return it }
+
+        val remote = runCatching { nas.foodByBarcode(barcode) }
+            .onFailure { nasStatus.reportUnreachable(it.message ?: "Couldn't reach the brain.") }
+            .getOrNull() ?: return null
+        nasStatus.reportReachable()
+
+        val food = FoodItem(
+            name = remote.name,
+            normalizedName = IngredientMatcher.normalize(remote.name).ifBlank { remote.name.lowercase() },
+            brand = remote.brand,
+            barcode = remote.barcode ?: barcode,
+            source = FoodSource.OFF,
+            servingLabel = remote.servingLabel,
+            servingGrams = remote.servingGrams,
+            kcalPer100 = remote.kcalPer100,
+            proteinPer100 = remote.proteinPer100,
+            carbsPer100 = remote.carbsPer100,
+            fatPer100 = remote.fatPer100,
+            fiberPer100 = remote.fiberPer100,
+            sugarPer100 = remote.sugarPer100,
+            satFatPer100 = remote.satFatPer100,
+            sodiumMgPer100 = remote.sodiumMgPer100,
+            isSupplement = remote.isSupplement,
+            imageUrl = remote.imageUrl,
+        )
+        // Cached locally so the next scan of the same packet is instant and works offline.
+        return food.copy(id = foodDao.upsert(food))
+    }
+
+    // ---- Recipe macros -------------------------------------------------------------------
+
+    /**
+     * Asks the brain to estimate a recipe's macros, and stores the result on the recipe.
+     *
+     * The app's own `normalizedName` is sent with every ingredient so both sides key on the same
+     * string — that is what lets the server match against its food table deterministically
+     * rather than asking a model to guess.
+     */
+    suspend fun estimateRecipe(recipeId: Long): RecipeEstimate? {
+        val details = recipeDao.recipeWithDetailsOnce(recipeId) ?: return null
+
+        val response = runCatching {
+            nas.estimate(
+                EstimateRequestDto(
+                    title = details.recipe.title,
+                    servings = details.recipe.servings,
+                    ingredients = details.orderedIngredients.map {
+                        NutritionIngredientDto(
+                            name = it.rawName,
+                            normalizedName = it.normalizedName,
+                            quantity = it.quantity,
+                            unit = it.unit,
+                            raw = it.measure.orEmpty(),
+                        )
+                    },
+                ),
+            )
+        }.onFailure {
+            nasStatus.reportUnreachable(it.message ?: "Couldn't reach the brain.")
+        }.getOrNull() ?: return null
+        nasStatus.reportReachable()
+
+        recipeDao.updateRecipe(
+            details.recipe.copy(
+                kcalPerServing = response.perServing.kcal,
+                proteinG = response.perServing.proteinG,
+                carbsG = response.perServing.carbsG,
+                fatG = response.perServing.fatG,
+                macroSource = com.lucca.ko.data.db.MacroSource.AI,
+                macroUpdatedAt = System.currentTimeMillis(),
+                macroNote = response.note,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+
+        return RecipeEstimate(
+            perServingKcal = response.perServing.kcal,
+            proteinG = response.perServing.proteinG,
+            carbsG = response.perServing.carbsG,
+            fatG = response.perServing.fatG,
+            coverage = response.coverage,
+            note = response.note,
+        )
+    }
+
+    // ---- Targets ---------------------------------------------------------------------------
+
+    /**
+     * The target for a date, recomputed from the profile and — when there is enough data — from
+     * what your weight has actually been doing.
+     */
+    suspend fun computeTarget(date: LocalDate = LocalDate.now()): TargetWithProvenance? {
+        val profile = profileRepo.current()
+        val formula = EnergyCalculator.targetsFor(profile, date.year) ?: return null
+
+        if (!profile.useAdaptiveTdee || profile.manualKcalTarget != null) {
+            return TargetWithProvenance(
+                targets = formula,
+                explanation = if (profile.manualKcalTarget != null) {
+                    "Your own calorie target, with macros split out of it."
+                } else {
+                    "From your height, weight and activity level."
+                },
+            )
+        }
+
+        val basal = EnergyCalculator.bmr(
+            profile.sex, profile.weightKg, profile.heightCm, profile.ageAt(date.year),
+        )
+        val formulaTdee = EnergyCalculator.tdee(basal, profile.activity)
+
+        val weighIns = bodyDao.weighIns().mapNotNull { metric ->
+            metric.weightKg?.let { DatedValue(LocalDate.parse(metric.date), it) }
+        }
+        val slope = WeightTrend.slopeKgPerDay(WeightTrend.ema(weighIns))
+
+        val since = date.minusDays(ADAPTIVE_WINDOW_DAYS)
+        val logged = nutritionDao.dailyKcal(since.toString(), date.toString())
+            .map { AdaptiveTdee.DayIntake(LocalDate.parse(it.date), it.kcal) }
+        val complete = AdaptiveTdee.completeDays(logged, basal)
+
+        val adaptive = AdaptiveTdee.estimate(
+            formulaTdee = formulaTdee,
+            trendSlopeKgPerDay = slope,
+            completeDays = complete,
+            totalDaysAvailable = logged.size,
+        )
+
+        if (!adaptive.isEstimate) {
+            return TargetWithProvenance(formula, AdaptiveTdee.describe(adaptive))
+        }
+
+        return TargetWithProvenance(
+            targets = EnergyCalculator.targetsFor(
+                tdee = adaptive.kcal,
+                bmr = basal,
+                goal = profile.goal,
+                weightKg = profile.weightKg,
+                bodyFatPct = profile.bodyFatPct,
+                proteinPerKgOverride = profile.proteinPerKgOverride,
+                source = TargetSource.ADAPTIVE,
+            ),
+            explanation = AdaptiveTdee.describe(adaptive),
+        )
+    }
+
+    /**
+     * Stores the target as effective from [date].
+     *
+     * Point-in-time rather than a single current value, so a day in February is judged against
+     * February's target rather than against whatever it became in June.
+     */
+    suspend fun persistTarget(targets: MacroTargets, date: LocalDate = LocalDate.now()) {
+        val existing = nutritionDao.targetOn(date.toString())
+        if (existing != null &&
+            existing.effectiveFrom == date.toString() &&
+            existing.kcal == targets.kcal &&
+            existing.proteinG == targets.proteinG
+        ) {
+            return
+        }
+        nutritionDao.upsertTarget(
+            NutritionTarget(
+                id = existing?.takeIf { it.effectiveFrom == date.toString() }?.id ?: 0,
+                effectiveFrom = date.toString(),
+                kcal = targets.kcal,
+                proteinG = targets.proteinG,
+                carbsG = targets.carbsG,
+                fatG = targets.fatG,
+                source = targets.source.name,
+            ),
+        )
+    }
+
+    /** Recomputes and stores today's target — called after a profile edit or a weigh-in. */
+    suspend fun refreshTodaysTarget(date: LocalDate = LocalDate.now()): TargetWithProvenance? =
+        computeTarget(date)?.also { persistTarget(it.targets, date) }
+
+    suspend fun profile(): UserProfile = profileRepo.current()
+
+    private companion object {
+        /** How far back the adaptive estimate looks. Four weeks is the usual settling time. */
+        const val ADAPTIVE_WINDOW_DAYS = 28L
+    }
+}
+
+fun FoodItem.toPer100g(): Per100g = Per100g(
+    kcal = kcalPer100,
+    proteinG = proteinPer100,
+    carbsG = carbsPer100,
+    fatG = fatPer100,
+    fiberG = fiberPer100,
+)
+
+/** The whole day's totals, for the rings. */
+fun DayTotals.asTotals() = com.lucca.ko.domain.nutrition.MacroTotals(
+    kcal = kcal, proteinG = proteinG, carbsG = carbsG, fatG = fatG, fiberG = fiberG,
+)
+
+/** Reading a stored target back into the domain shape. */
+fun NutritionTarget.toMacroTargets(): MacroTargets = MacroTargets(
+    kcal = kcal,
+    proteinG = proteinG,
+    carbsG = carbsG,
+    fatG = fatG,
+    source = runCatching { TargetSource.valueOf(source) }.getOrDefault(TargetSource.FORMULA),
+)
+
+/** The flow the Today screen needs: entries grouped by when they were eaten. */
+fun List<NutritionEntry>.bySlot(): Map<LogSlot, List<NutritionEntry>> =
+    groupBy { it.slot }.toSortedMap(compareBy { it.ordinal })

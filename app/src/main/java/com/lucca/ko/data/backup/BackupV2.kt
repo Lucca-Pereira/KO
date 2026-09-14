@@ -1,6 +1,13 @@
 package com.lucca.ko.data.backup
 
+import com.lucca.ko.data.db.BodyMetric
+import com.lucca.ko.data.db.FoodItem
+import com.lucca.ko.data.db.FoodSource
+import com.lucca.ko.data.db.LogSlot
+import com.lucca.ko.data.db.LogSource
 import com.lucca.ko.data.db.MacroSource
+import com.lucca.ko.data.db.NutritionEntry
+import com.lucca.ko.data.db.NutritionTarget
 import com.lucca.ko.data.db.MealPlanEntry
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.PantryItem
@@ -11,6 +18,9 @@ import com.lucca.ko.data.db.RecipeStep
 import com.lucca.ko.data.db.RecipeTag
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.data.db.Supplement
+import com.lucca.ko.data.db.SupplementKind
+import com.lucca.ko.data.db.SupplementLog
 import com.lucca.ko.data.db.Tag
 import kotlinx.serialization.Serializable
 
@@ -117,6 +127,107 @@ data class ShoppingListItemV2(
     val addedAt: Long = 0,
 )
 
+@Serializable
+data class FoodItemV2(
+    val id: Long = 0,
+    val name: String,
+    val normalizedName: String,
+    val brand: String? = null,
+    val barcode: String? = null,
+    val source: FoodSource = FoodSource.MANUAL,
+    val readOnly: Boolean = false,
+    val servingLabel: String? = null,
+    val servingGrams: Double? = null,
+    val kcalPer100: Double = 0.0,
+    val proteinPer100: Double = 0.0,
+    val carbsPer100: Double = 0.0,
+    val fatPer100: Double = 0.0,
+    val fiberPer100: Double? = null,
+    val sugarPer100: Double? = null,
+    val satFatPer100: Double? = null,
+    val sodiumMgPer100: Double? = null,
+    val isSupplement: Boolean = false,
+    val isFavourite: Boolean = false,
+    val imageUrl: String? = null,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+)
+
+@Serializable
+data class NutritionEntryV2(
+    val id: Long = 0,
+    val date: String,
+    val slot: LogSlot = LogSlot.SNACK,
+    val loggedAt: Long = 0,
+    val sourceType: LogSource = LogSource.QUICK,
+    val foodItemId: Long? = null,
+    val dishId: Long? = null,
+    val supplementId: Long? = null,
+    val label: String,
+    val grams: Double? = null,
+    val servings: Double? = null,
+    val kcal: Double = 0.0,
+    val proteinG: Double = 0.0,
+    val carbsG: Double = 0.0,
+    val fatG: Double = 0.0,
+    val fiberG: Double? = null,
+    val note: String? = null,
+)
+
+@Serializable
+data class NutritionTargetV2(
+    val id: Long = 0,
+    val effectiveFrom: String,
+    val kcal: Double,
+    val proteinG: Double,
+    val carbsG: Double,
+    val fatG: Double,
+    val source: String = "FORMULA",
+)
+
+@Serializable
+data class BodyMetricV2(
+    val id: Long = 0,
+    val date: String,
+    val weightKg: Double? = null,
+    val bodyFatPct: Double? = null,
+    val waistCm: Double? = null,
+    val chestCm: Double? = null,
+    val hipCm: Double? = null,
+    val armCm: Double? = null,
+    val thighCm: Double? = null,
+    val neckCm: Double? = null,
+    val note: String? = null,
+    val recordedAt: Long = 0,
+)
+
+@Serializable
+data class SupplementV2(
+    val id: Long = 0,
+    val name: String,
+    val kind: SupplementKind = SupplementKind.OTHER,
+    val doseAmount: Double = 1.0,
+    val doseUnit: String = "g",
+    val kcalPerDose: Double = 0.0,
+    val proteinPerDose: Double = 0.0,
+    val carbsPerDose: Double = 0.0,
+    val fatPerDose: Double = 0.0,
+    val dosesPerDay: Int = 1,
+    val active: Boolean = true,
+    val foodItemId: Long? = null,
+    val sortOrder: Int = 0,
+)
+
+@Serializable
+data class SupplementLogV2(
+    val id: Long = 0,
+    val date: String,
+    val supplementId: Long,
+    val doses: Double = 1.0,
+    val takenAt: Long = 0,
+    val note: String? = null,
+)
+
 /**
  * Settings carried in a backup.
  *
@@ -144,6 +255,13 @@ data class KoBackupV2(
     val recipeTags: List<RecipeTagV2> = emptyList(),
     val mealPlan: List<MealPlanEntryV2> = emptyList(),
     val shopping: List<ShoppingListItemV2> = emptyList(),
+    // The gym side. All default to empty, so a file written before v0.7.0 still reads.
+    val foods: List<FoodItemV2> = emptyList(),
+    val nutritionEntries: List<NutritionEntryV2> = emptyList(),
+    val nutritionTargets: List<NutritionTargetV2> = emptyList(),
+    val bodyMetrics: List<BodyMetricV2> = emptyList(),
+    val supplements: List<SupplementV2> = emptyList(),
+    val supplementLog: List<SupplementLogV2> = emptyList(),
 )
 
 // ---- Entity <-> DTO -----------------------------------------------------------------
@@ -208,3 +326,55 @@ fun ShoppingListItem.toV2() =
 
 fun ShoppingListItemV2.toEntity() =
     ShoppingListItem(id, name, normalizedName, category, pantryItemId, checked, addedAt)
+
+fun FoodItem.toV2() = FoodItemV2(
+    id, name, normalizedName, brand, barcode, source, readOnly, servingLabel, servingGrams,
+    kcalPer100, proteinPer100, carbsPer100, fatPer100, fiberPer100, sugarPer100, satFatPer100,
+    sodiumMgPer100, isSupplement, isFavourite, imageUrl, createdAt, updatedAt,
+)
+
+fun FoodItemV2.toEntity() = FoodItem(
+    id, name, normalizedName, brand, barcode, source, readOnly, servingLabel, servingGrams,
+    kcalPer100, proteinPer100, carbsPer100, fatPer100, fiberPer100, sugarPer100, satFatPer100,
+    sodiumMgPer100, isSupplement, isFavourite, imageUrl, createdAt, updatedAt,
+)
+
+fun NutritionEntry.toV2() = NutritionEntryV2(
+    id, date, slot, loggedAt, sourceType, foodItemId, dishId, supplementId, label, grams,
+    servings, kcal, proteinG, carbsG, fatG, fiberG, note,
+)
+
+fun NutritionEntryV2.toEntity() = NutritionEntry(
+    id, date, slot, loggedAt, sourceType, foodItemId, dishId, supplementId, label, grams,
+    servings, kcal, proteinG, carbsG, fatG, fiberG, note,
+)
+
+fun NutritionTarget.toV2() =
+    NutritionTargetV2(id, effectiveFrom, kcal, proteinG, carbsG, fatG, source)
+
+fun NutritionTargetV2.toEntity() =
+    NutritionTarget(id, effectiveFrom, kcal, proteinG, carbsG, fatG, source)
+
+fun BodyMetric.toV2() = BodyMetricV2(
+    id, date, weightKg, bodyFatPct, waistCm, chestCm, hipCm, armCm, thighCm, neckCm, note,
+    recordedAt,
+)
+
+fun BodyMetricV2.toEntity() = BodyMetric(
+    id, date, weightKg, bodyFatPct, waistCm, chestCm, hipCm, armCm, thighCm, neckCm, note,
+    recordedAt,
+)
+
+fun Supplement.toV2() = SupplementV2(
+    id, name, kind, doseAmount, doseUnit, kcalPerDose, proteinPerDose, carbsPerDose, fatPerDose,
+    dosesPerDay, active, foodItemId, sortOrder,
+)
+
+fun SupplementV2.toEntity() = Supplement(
+    id, name, kind, doseAmount, doseUnit, kcalPerDose, proteinPerDose, carbsPerDose, fatPerDose,
+    dosesPerDay, active, foodItemId, sortOrder,
+)
+
+fun SupplementLog.toV2() = SupplementLogV2(id, date, supplementId, doses, takenAt, note)
+
+fun SupplementLogV2.toEntity() = SupplementLog(id, date, supplementId, doses, takenAt, note)

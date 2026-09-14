@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Kitchen
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -30,6 +31,10 @@ import androidx.navigation.toRoute
 import com.lucca.ko.KoApp
 import com.lucca.ko.ui.common.NasStatusBanner
 import com.lucca.ko.ui.mealsearch.MealSearchScreen
+import com.lucca.ko.ui.nutrition.FoodEditScreen
+import com.lucca.ko.ui.nutrition.NutritionHubScreen
+import com.lucca.ko.ui.nutrition.ProfileScreen
+import com.lucca.ko.ui.nutrition.SupplementsScreen
 import com.lucca.ko.ui.pantry.PantryScreen
 import com.lucca.ko.ui.plan.PlanScreen
 import com.lucca.ko.ui.recipes.DuplicatesScreen
@@ -62,11 +67,14 @@ private sealed class Dest(
     data object Pantry : Dest(PantryRoute, PantryRoute::class, "Pantry", Icons.Filled.Kitchen)
     data object Plan : Dest(PlanRoute, PlanRoute::class, "Plan", Icons.Filled.CalendarMonth)
     data object Recipes : Dest(RecipesRoute, RecipesRoute::class, "Recipes", Icons.AutoMirrored.Filled.MenuBook)
+    data object Nutrition :
+        Dest(NutritionRoute, NutritionRoute::class, "Gym", Icons.Filled.FitnessCenter)
     data object Shopping :
         Dest(ShoppingRoute, ShoppingRoute::class, "Shopping", Icons.Filled.ShoppingCart)
 }
 
-private val bottomDests = listOf(Dest.Pantry, Dest.Plan, Dest.Recipes, Dest.Shopping)
+private val bottomDests =
+    listOf(Dest.Pantry, Dest.Plan, Dest.Recipes, Dest.Nutrition, Dest.Shopping)
 
 @Composable
 fun KoRoot() {
@@ -125,6 +133,30 @@ fun KoRoot() {
                         onSearchMealDb = { navController.navigate(MealSearchRoute()) },
                         onFindDuplicates = { navController.navigate(DuplicatesRoute) },
                         onOpenSettings = { navController.navigate(SettingsRoute) },
+                    )
+                }
+
+                composable<NutritionRoute> {
+                    NutritionHubScreen(
+                        onOpenProfile = { navController.navigate(ProfileRoute) },
+                        onOpenSettings = { navController.navigate(SettingsRoute) },
+                        onOpenSupplements = { navController.navigate(SupplementsRoute) },
+                        onNewFood = { navController.navigate(FoodEditRoute()) },
+                    )
+                }
+
+                composable<ProfileRoute> {
+                    ProfileScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable<SupplementsRoute> {
+                    SupplementsScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable<FoodEditRoute> {
+                    FoodEditScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = { navController.popBackStack() },
                     )
                 }
 

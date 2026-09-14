@@ -13,6 +13,11 @@ A personal Android app to run your kitchen:
 - **Ask about a recipe** – a conversation attached to each one. Swaps, scaling, technique,
   what to do without an oven. If you ask for a change it comes back as a proposal you review
   line by line before it is applied, and every applied change can be undone.
+- **Gym** – a food diary that knows about your kitchen. Calories and macros against a
+  target worked out from your own height, weight and goal, and corrected over time from
+  what your weight actually does rather than from a formula. Scan a barcode, search a
+  bundled table of 135 common foods, or log a recipe you cooked. Creatine and protein
+  shakes tracked as daily habits — anything with calories also lands in the diary.
 - **Shopping list** – auto-filled from anything that runs out, plus manual entries.
   Tick an item off and it goes back to the pantry as *In stock*.
 
@@ -32,6 +37,9 @@ writes recipes, and answers questions about the one you are cooking.
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.7.0:** adds the gym side. No existing data moves — the migration only
+> creates new tables.
+>
 > **Upgrading to v0.5.0:** the app now talks to the KO brain service instead of to Ollama
 > directly, so the old server setting does not carry over — it pointed at Ollama's own port.
 > Deploy [`server/`](server/) and set the new URL and token in Settings.

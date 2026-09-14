@@ -220,5 +220,168 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/**
+ * v4 -> v5: the gym side — the food diary, body metrics and supplements.
+ *
+ * Kept as one version rather than two despite covering two features. Splitting migrations is
+ * about blast radius, and everything here is `CREATE TABLE` with nothing to lose; splitting them
+ * would instead leave a version 5 that no user database is ever at and that has no exported
+ * schema file, which is a real maintenance trap for a purely cosmetic gain.
+ *
+ * `nutrition_entries.supplementId` has no foreign key on purpose: the entity declares no relation
+ * for it, so a supplement can be deleted without rewriting a day's food diary.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS food_items (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name            TEXT    NOT NULL,
+                normalizedName  TEXT    NOT NULL,
+                brand           TEXT,
+                barcode         TEXT,
+                source          TEXT    NOT NULL,
+                readOnly        INTEGER NOT NULL DEFAULT 0,
+                servingLabel    TEXT,
+                servingGrams    REAL,
+                kcalPer100      REAL    NOT NULL,
+                proteinPer100   REAL    NOT NULL,
+                carbsPer100     REAL    NOT NULL,
+                fatPer100       REAL    NOT NULL,
+                fiberPer100     REAL,
+                sugarPer100     REAL,
+                satFatPer100    REAL,
+                sodiumMgPer100  REAL,
+                isSupplement    INTEGER NOT NULL DEFAULT 0,
+                isFavourite     INTEGER NOT NULL DEFAULT 0,
+                imageUrl        TEXT,
+                createdAt       INTEGER NOT NULL,
+                updatedAt       INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_food_items_barcode ON food_items (barcode)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_food_items_normalizedName ON food_items (normalizedName)",
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS nutrition_entries (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                date         TEXT    NOT NULL,
+                slot         TEXT    NOT NULL,
+                loggedAt     INTEGER NOT NULL,
+                sourceType   TEXT    NOT NULL,
+                foodItemId   INTEGER,
+                dishId       INTEGER,
+                supplementId INTEGER,
+                label        TEXT    NOT NULL,
+                grams        REAL,
+                servings     REAL,
+                kcal         REAL    NOT NULL,
+                proteinG     REAL    NOT NULL,
+                carbsG       REAL    NOT NULL,
+                fatG         REAL    NOT NULL,
+                fiberG       REAL,
+                note         TEXT,
+                FOREIGN KEY(foodItemId) REFERENCES food_items(id) ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(dishId)     REFERENCES dishes(id)     ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_nutrition_entries_date ON nutrition_entries (date)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_nutrition_entries_foodItemId " +
+                "ON nutrition_entries (foodItemId)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_nutrition_entries_dishId ON nutrition_entries (dishId)",
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS nutrition_targets (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                effectiveFrom TEXT NOT NULL,
+                kcal          REAL NOT NULL,
+                proteinG      REAL NOT NULL,
+                carbsG        REAL NOT NULL,
+                fatG          REAL NOT NULL,
+                source        TEXT NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_nutrition_targets_effectiveFrom " +
+                "ON nutrition_targets (effectiveFrom)",
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS body_metrics (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                date       TEXT NOT NULL,
+                weightKg   REAL,
+                bodyFatPct REAL,
+                waistCm    REAL,
+                chestCm    REAL,
+                hipCm      REAL,
+                armCm      REAL,
+                thighCm    REAL,
+                neckCm     REAL,
+                note       TEXT,
+                recordedAt INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        // One row per day: two numbers for one morning is noise, not information.
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_body_metrics_date ON body_metrics (date)")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS supplements (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name           TEXT    NOT NULL,
+                kind           TEXT    NOT NULL,
+                doseAmount     REAL    NOT NULL,
+                doseUnit       TEXT    NOT NULL,
+                kcalPerDose    REAL    NOT NULL DEFAULT 0,
+                proteinPerDose REAL    NOT NULL DEFAULT 0,
+                carbsPerDose   REAL    NOT NULL DEFAULT 0,
+                fatPerDose     REAL    NOT NULL DEFAULT 0,
+                dosesPerDay    INTEGER NOT NULL DEFAULT 1,
+                active         INTEGER NOT NULL DEFAULT 1,
+                foodItemId     INTEGER,
+                sortOrder      INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent(),
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS supplement_log (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                date         TEXT    NOT NULL,
+                supplementId INTEGER NOT NULL,
+                doses        REAL    NOT NULL DEFAULT 1,
+                takenAt      INTEGER NOT NULL,
+                note         TEXT,
+                FOREIGN KEY(supplementId) REFERENCES supplements(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_supplement_log_date_supplementId " +
+                "ON supplement_log (date, supplementId)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_supplement_log_supplementId " +
+                "ON supplement_log (supplementId)",
+        )
+    }
+}
+
 /** Every migration the database knows about, in order. */
-val KO_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+val KO_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)

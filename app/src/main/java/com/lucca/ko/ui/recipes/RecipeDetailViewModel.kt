@@ -9,7 +9,9 @@ import com.lucca.ko.data.db.Recipe
 import com.lucca.ko.data.db.RecipeStep
 import com.lucca.ko.data.db.Tag
 import com.lucca.ko.data.db.MealSlot
+import com.lucca.ko.data.db.LogSlot
 import com.lucca.ko.data.repo.MealPlanRepository
+import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.PantryRepository
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.domain.Availability
@@ -40,10 +42,17 @@ class RecipeDetailViewModel(
     private val recipes: RecipeRepository,
     private val pantryRepo: PantryRepository,
     private val mealPlan: MealPlanRepository,
+    private val nutrition: NutritionRepository,
     private val recipeId: Long,
 ) : ViewModel() {
 
     private val planCount = MutableStateFlow(0)
+
+    private val _estimating = MutableStateFlow(false)
+    val estimating = _estimating.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message = _message.asStateFlow()
 
     private val _deleted = MutableStateFlow(false)
 
@@ -114,6 +123,30 @@ class RecipeDetailViewModel(
         planCount.value = recipes.planCountFor(recipeId)
     }
 
+    /** Asks the brain for this recipe's macros and stores them on it. */
+    fun estimateMacros() = viewModelScope.launch {
+        _estimating.value = true
+        val result = nutrition.estimateRecipe(recipeId)
+        _estimating.value = false
+        _message.value = when {
+            result == null -> "Couldn't reach the brain to work out the macros."
+            result.coverage < 0.999 -> result.note
+            else -> "Macros updated."
+        }
+    }
+
+    /** Logs a portion of this recipe into today's food diary. */
+    fun logServings(servings: Double) = viewModelScope.launch {
+        val logged = nutrition.logRecipe(recipeId, servings, java.time.LocalDate.now(), LogSlot.DINNER)
+        _message.value = if (logged == null) {
+            "Work out the macros first, then it can go in the diary."
+        } else {
+            "Logged $servings serving${if (servings == 1.0) "" else "s"}."
+        }
+    }
+
+    fun clearMessage() { _message.value = null }
+
     fun refreshPlanCount() = viewModelScope.launch {
         planCount.value = recipes.planCountFor(recipeId)
     }
@@ -129,6 +162,7 @@ class RecipeDetailViewModel(
                 recipes = container.recipeRepository,
                 pantryRepo = container.pantryRepository,
                 mealPlan = container.mealPlanRepository,
+                nutrition = container.nutritionRepository,
                 recipeId = createSavedStateHandle().recipeId(),
             )
         }

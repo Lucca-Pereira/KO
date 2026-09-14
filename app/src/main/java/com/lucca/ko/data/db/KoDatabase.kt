@@ -6,11 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import com.lucca.ko.data.db.dao.BodyDao
 import com.lucca.ko.data.db.dao.ChatDao
+import com.lucca.ko.data.db.dao.FoodDao
+import com.lucca.ko.data.db.dao.NutritionDao
 import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.db.dao.ShoppingDao
+import com.lucca.ko.data.db.dao.SupplementDao
 import com.lucca.ko.data.db.dao.TagDao
 
 class Converters {
@@ -31,6 +35,22 @@ class Converters {
     @TypeConverter fun stringToProposalStatus(s: String?): ProposalStatus? =
         s?.let { runCatching { ProposalStatus.valueOf(it) }.getOrNull() }
 
+    @TypeConverter fun foodSourceToString(s: FoodSource): String = s.name
+    @TypeConverter fun stringToFoodSource(s: String): FoodSource =
+        runCatching { FoodSource.valueOf(s) }.getOrDefault(FoodSource.MANUAL)
+
+    @TypeConverter fun logSourceToString(s: LogSource): String = s.name
+    @TypeConverter fun stringToLogSource(s: String): LogSource =
+        runCatching { LogSource.valueOf(s) }.getOrDefault(LogSource.QUICK)
+
+    @TypeConverter fun logSlotToString(s: LogSlot): String = s.name
+    @TypeConverter fun stringToLogSlot(s: String): LogSlot =
+        runCatching { LogSlot.valueOf(s) }.getOrDefault(LogSlot.SNACK)
+
+    @TypeConverter fun supplementKindToString(s: SupplementKind): String = s.name
+    @TypeConverter fun stringToSupplementKind(s: String): SupplementKind =
+        runCatching { SupplementKind.valueOf(s) }.getOrDefault(SupplementKind.OTHER)
+
     @TypeConverter fun macroSourceToString(s: MacroSource?): String? = s?.name
     @TypeConverter fun stringToMacroSource(s: String?): MacroSource? =
         s?.let { runCatching { MacroSource.valueOf(it) }.getOrNull() }
@@ -48,8 +68,14 @@ class Converters {
         ShoppingListItem::class,
         RecipeChatMessage::class,
         RecipeRevision::class,
+        FoodItem::class,
+        NutritionEntry::class,
+        NutritionTarget::class,
+        BodyMetric::class,
+        Supplement::class,
+        SupplementLog::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -59,6 +85,10 @@ abstract class KoDatabase : RoomDatabase() {
     abstract fun tagDao(): TagDao
     abstract fun mealPlanDao(): MealPlanDao
     abstract fun chatDao(): ChatDao
+    abstract fun foodDao(): FoodDao
+    abstract fun nutritionDao(): NutritionDao
+    abstract fun bodyDao(): BodyDao
+    abstract fun supplementDao(): SupplementDao
     abstract fun shoppingDao(): ShoppingDao
 
     companion object {

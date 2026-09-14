@@ -27,6 +27,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Downloads the barcode scanner ahead of time; without this the first scan stalls
+             on a module download at exactly the moment you are stood in a shop. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <!-- Grants the camera app a write URI for one recipe photo at a time. -->
         <provider
             android:name="androidx.core.content.FileProvider"

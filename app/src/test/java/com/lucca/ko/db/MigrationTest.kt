@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.db.MIGRATION_2_3
 import com.lucca.ko.data.db.MIGRATION_3_4
+import com.lucca.ko.data.db.MIGRATION_4_5
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -236,6 +237,117 @@ class MigrationTest {
             assertEquals(0, db.count("SELECT COUNT(*) FROM recipe_revisions"))
             // The plan entry, by contrast, survives.
             assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
+        }
+    }
+    // ---- 4 -> 5: the gym side ------------------------------------------------------
+
+    private fun migrateToLatest() = helper.runMigrationsAndValidate(
+        TEST_DB, 5, true, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+    )
+
+    @Test
+    fun migrate4To5_validatesAgainstTheEntities() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+    }
+
+    @Test
+    fun migrate4To5_leavesTheKitchenAlone() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            assertEquals(3, db.count("SELECT COUNT(*) FROM pantry_items"))
+            assertEquals(2, db.count("SELECT COUNT(*) FROM dishes"))
+            assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM nutrition_entries"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM body_metrics"))
+        }
+    }
+
+    @Test
+    fun migrate4To5_oneWeighInPerDay() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            db.execSQL(
+                "INSERT INTO body_metrics (date, weightKg, recordedAt) VALUES ('2026-09-14', 80.0, 1)",
+            )
+            val threw = runCatching {
+                db.execSQL(
+                    "INSERT INTO body_metrics (date, weightKg, recordedAt) " +
+                        "VALUES ('2026-09-14', 80.5, 2)",
+                )
+            }.isFailure
+            // Two numbers for one morning is noise, not information.
+            assertTrue("the unique index on date should reject a second weigh-in", threw)
+        }
+    }
+
+    @Test
+    fun migrate4To5_deletingAFoodLeavesTheDiaryReadable() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL(
+                "INSERT INTO food_items (id, name, normalizedName, source, readOnly, kcalPer100, " +
+                    "proteinPer100, carbsPer100, fatPer100, isSupplement, isFavourite, createdAt, " +
+                    "updatedAt) VALUES (1, 'Yoghurt', 'yoghurt', 'OFF', 0, 61, 3.5, 4.7, 3.3, 0, 0, 1, 1)",
+            )
+            db.execSQL(
+                "INSERT INTO nutrition_entries (date, slot, loggedAt, sourceType, foodItemId, " +
+                    "label, kcal, proteinG, carbsG, fatG) " +
+                    "VALUES ('2026-09-14', 'BREAKFAST', 1, 'FOOD', 1, 'Yoghurt', 104, 6, 8, 5.6)",
+            )
+
+            db.execSQL("DELETE FROM food_items WHERE id = 1")
+
+            // SET NULL, not CASCADE: correcting or removing a food must not rewrite history.
+            assertEquals(1, db.count("SELECT COUNT(*) FROM nutrition_entries"))
+            assertNull(db.longOrNull("SELECT foodItemId FROM nutrition_entries LIMIT 1"))
+            assertEquals("Yoghurt", db.text("SELECT label FROM nutrition_entries LIMIT 1"))
+            assertEquals(104L, db.long("SELECT CAST(kcal AS INTEGER) FROM nutrition_entries LIMIT 1"))
+        }
+    }
+
+    @Test
+    fun migrate4To5_deletingASupplementTakesItsLog() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL(
+                "INSERT INTO supplements (id, name, kind, doseAmount, doseUnit) " +
+                    "VALUES (1, 'Creatine', 'CREATINE', 5, 'g')",
+            )
+            db.execSQL(
+                "INSERT INTO supplement_log (date, supplementId, doses, takenAt) " +
+                    "VALUES ('2026-09-14', 1, 1, 1)",
+            )
+
+            db.execSQL("DELETE FROM supplements WHERE id = 1")
+
+            // Unlike a food diary line, an adherence record for something you no longer take is
+            // not history worth keeping.
+            assertEquals(0, db.count("SELECT COUNT(*) FROM supplement_log"))
+        }
+    }
+
+    @Test
+    fun migrate4To5_oneSupplementRowPerDay() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            db.execSQL(
+                "INSERT INTO supplements (id, name, kind, doseAmount, doseUnit) " +
+                    "VALUES (1, 'Creatine', 'CREATINE', 5, 'g')",
+            )
+            db.execSQL(
+                "INSERT INTO supplement_log (date, supplementId, doses, takenAt) " +
+                    "VALUES ('2026-09-14', 1, 1, 1)",
+            )
+            val threw = runCatching {
+                db.execSQL(
+                    "INSERT INTO supplement_log (date, supplementId, doses, takenAt) " +
+                        "VALUES ('2026-09-14', 1, 1, 2)",
+                )
+            }.isFailure
+            assertTrue("ticking twice is a correction, not a second scoop", threw)
         }
     }
 }

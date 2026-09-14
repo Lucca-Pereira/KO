@@ -26,6 +26,9 @@ class KoApp : Application() {
         applicationScope.launch {
             // One-shot data repairs, each guarded by its own flag; see data/repair/StartupRepairs.kt.
             container.startupRepairs.runAll()
+            // First-run data: the bundled food table, and creatine + whey as presets.
+            runCatching { container.foodSeedLoader.seedIfEmpty() }
+            runCatching { container.supplementRepository.seedDefaultsIfEmpty() }
         }
         // First health check, so the offline banner is accurate before anything is tapped.
         container.nasStatus.refreshIfStale()

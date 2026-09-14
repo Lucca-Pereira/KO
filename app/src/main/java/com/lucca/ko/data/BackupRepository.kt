@@ -23,6 +23,7 @@ data class ImportSummary(
     val recipes: Int,
     val plan: Int,
     val shopping: Int,
+    val loggedDays: Int = 0,
 )
 
 /**
@@ -59,6 +60,14 @@ class BackupRepository(
             recipeTags = db.tagDao().getAllLinks().map { it.toV2() },
             mealPlan = db.mealPlanDao().getAll().map { it.toV2() },
             shopping = db.shoppingDao().getAll().map { it.toV2() },
+            // Seed rows are excluded: they ship in the APK, so backing them up would triple the
+            // file size to restore something the app already has.
+            foods = db.foodDao().getAll().filterNot { it.readOnly }.map { it.toV2() },
+            nutritionEntries = db.nutritionDao().getAll().map { it.toV2() },
+            nutritionTargets = db.nutritionDao().allTargets().map { it.toV2() },
+            bodyMetrics = db.bodyDao().getAll().map { it.toV2() },
+            supplements = db.supplementDao().getAllSupplements().map { it.toV2() },
+            supplementLog = db.supplementDao().getAllLogs().map { it.toV2() },
         )
         return json.encodeToString(KoBackupV2.serializer(), backup)
     }
@@ -91,10 +100,18 @@ class BackupRepository(
             db.pantryDao().insertAll(pantry.map { it.toEntity() })
             db.shoppingDao().insertAll(shopping.map { it.toEntity() })
             db.mealPlanDao().insertAll(backup.mealPlan.map { it.toEntity() })
+            db.foodDao().insertAll(backup.foods.map { it.toEntity() })
+            db.supplementDao().insertAllSupplements(backup.supplements.map { it.toEntity() })
+            db.supplementDao().insertAllLogs(backup.supplementLog.map { it.toEntity() })
+            db.nutritionDao().insertAll(backup.nutritionEntries.map { it.toEntity() })
+            db.nutritionDao().insertAllTargets(backup.nutritionTargets.map { it.toEntity() })
+            db.bodyDao().insertAll(backup.bodyMetrics.map { it.toEntity() })
         }
 
         settings.markNormalizationRepaired()
         settings.markMeasuresParsed()
+        // clearAllTables() took the bundled foods with everything else; FoodSeedLoader puts them
+        // back on next launch, since its guard is "are there any read-only rows".
         // Search blobs are not in the file; let StartupRepairs rebuild them on next launch.
         if (restoreSettings) {
             settings.update(
@@ -108,6 +125,7 @@ class BackupRepository(
             recipes = backup.recipes.size,
             plan = backup.mealPlan.size,
             shopping = backup.shopping.size,
+            loggedDays = backup.nutritionEntries.map { it.date }.distinct().size,
         )
     }
 

@@ -3,18 +3,23 @@ package com.lucca.ko
 import android.content.Context
 import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.db.KoDatabase
+import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SecretsRepository
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.data.remote.MealDbClient
 import com.lucca.ko.data.remote.nas.NasClient
 import com.lucca.ko.data.remote.nas.NasStatusMonitor
 import com.lucca.ko.data.repair.StartupRepairs
+import com.lucca.ko.data.seed.FoodSeedLoader
+import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.MealPlanRepository
+import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.PantryRepository
 import com.lucca.ko.data.repo.RecipeChatRepository
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SuggestionRepository
+import com.lucca.ko.data.repo.SupplementRepository
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import okhttp3.OkHttpClient
@@ -112,6 +117,32 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
             nasStatus = nasStatus,
             settings = settingsRepository,
         )
+    }
+
+    val profileRepository: ProfileRepository by lazy { ProfileRepository(appContext) }
+
+    val nutritionRepository: NutritionRepository by lazy {
+        NutritionRepository(
+            foodDao = database.foodDao(),
+            nutritionDao = database.nutritionDao(),
+            bodyDao = database.bodyDao(),
+            recipeDao = database.recipeDao(),
+            profileRepo = profileRepository,
+            nas = nasClient,
+            nasStatus = nasStatus,
+        )
+    }
+
+    val bodyRepository: BodyRepository by lazy {
+        BodyRepository(database.bodyDao(), profileRepository)
+    }
+
+    val supplementRepository: SupplementRepository by lazy {
+        SupplementRepository(database.supplementDao(), database.nutritionDao())
+    }
+
+    val foodSeedLoader: FoodSeedLoader by lazy {
+        FoodSeedLoader(appContext, database.foodDao())
     }
 
     val backupRepository: BackupRepository by lazy {
