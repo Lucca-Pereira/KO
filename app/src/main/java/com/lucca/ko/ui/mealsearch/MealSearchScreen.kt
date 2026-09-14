@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.lucca.ko.data.remote.MealSummary
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.MealRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,7 +64,7 @@ fun MealSearchScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Search recipes") },
+                title = { Text("Search TheMealDB") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -90,33 +91,17 @@ fun MealSearchScreen(
                 state.results.isEmpty() && state.searched ->
                     EmptyState(title = "No recipes found", subtitle = "Try a different dish name.")
                 state.results.isEmpty() ->
-                    EmptyState(title = "Search TheMealDB", subtitle = "Look up a recipe by name to add it to your plan.")
+                    EmptyState(title = "Search TheMealDB", subtitle = "Look up a recipe by name to add it to your library.")
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                     items(state.results, key = { it.id }) { meal ->
-                        MealRow(meal, saving = state.savingId == meal.id) {
-                            vm.pick(meal.id, date, slot)
-                        }
+                        MealRow(
+                            meal = meal,
+                            saving = state.savingId == meal.id,
+                            onClick = { vm.pick(meal.id, date, slot) },
+                        )
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MealRow(meal: MealSummary, saving: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(enabled = !saving, onClick = onClick).padding(16.dp, 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        AsyncImage(
-            model = meal.thumbUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
-        )
-        Text(meal.title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        if (saving) CircularProgressIndicator(Modifier.size(20.dp))
     }
 }

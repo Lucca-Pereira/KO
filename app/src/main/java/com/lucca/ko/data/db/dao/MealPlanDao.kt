@@ -43,6 +43,10 @@ interface MealPlanDao {
     @Query("UPDATE meal_plan SET titleSnapshot = :title WHERE dishId = :dishId")
     suspend fun refreshTitleSnapshots(dishId: Long, title: String)
 
+    /** Points every entry for one recipe at another — used when merging duplicates. */
+    @Query("UPDATE meal_plan SET dishId = :to, titleSnapshot = :title WHERE dishId = :from")
+    suspend fun repointRecipe(from: Long, to: Long, title: String)
+
     @Query("DELETE FROM meal_plan WHERE id = :id")
     suspend fun delete(id: Long)
 

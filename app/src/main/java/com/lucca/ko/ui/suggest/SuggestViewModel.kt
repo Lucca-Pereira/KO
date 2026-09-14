@@ -50,11 +50,15 @@ class SuggestViewModel(
                 // Two steps now: the recipe lands in the library, the plan gets a reference to
                 // it. Importing the same meal twice reuses the existing recipe.
                 val recipeId = recipes.importFromMealDb(detail)
-                plan.addToPlan(
-                    recipeId = recipeId,
-                    date = LocalDate.parse(date),
-                    slot = runCatching { MealSlot.valueOf(slot) }.getOrDefault(MealSlot.DINNER),
-                )
+                // A blank date means the user came from the Recipes tab and is only building
+                // the library, not planning a meal.
+                if (date.isNotBlank()) {
+                    plan.addToPlan(
+                        recipeId = recipeId,
+                        date = LocalDate.parse(date),
+                        slot = runCatching { MealSlot.valueOf(slot) }.getOrDefault(MealSlot.DINNER),
+                    )
+                }
                 recipeId
             }.onSuccess { dishId -> _state.update { it.copy(savingId = null, savedDishId = dishId) } }
                 .onFailure { e -> _state.update { it.copy(savingId = null, error = e.message ?: "Could not save") } }

@@ -93,6 +93,27 @@ abstract class RecipeDao {
     @Query("UPDATE dish_ingredients SET sortOrder = :order WHERE id = :id")
     abstract suspend fun setIngredientOrder(id: Long, order: Int)
 
+    @Query("DELETE FROM dish_ingredients WHERE dishId = :dishId")
+    abstract suspend fun deleteIngredientsFor(dishId: Long)
+
+    /**
+     * Replaces a recipe's ingredient list wholesale, which is how the editor and an accepted AI
+     * patch both save. Rows are re-inserted rather than diffed, so ids are not stable across a
+     * save; nothing outside the recipe references an ingredient id except `pantryItemId`, which
+     * travels with the row.
+     */
+    @Transaction
+    open suspend fun replaceIngredients(dishId: Long, ingredients: List<RecipeIngredient>) {
+        deleteIngredientsFor(dishId)
+        insertIngredients(
+            ingredients.mapIndexed { i, ing -> ing.copy(id = 0, dishId = dishId, sortOrder = i) },
+        )
+    }
+
+    /** Recipes whose titles collide, for the Find duplicates tool. */
+    @Query("SELECT * FROM dishes ORDER BY id")
+    abstract suspend fun allRecipesForDuplicateScan(): List<Recipe>
+
     // ---- Steps ---------------------------------------------------------------------
 
     @Insert

@@ -36,6 +36,9 @@ interface TagDao {
     @Query("SELECT t.* FROM tags t JOIN recipe_tags rt ON rt.tagId = t.id WHERE rt.dishId = :dishId")
     suspend fun tagsFor(dishId: Long): List<Tag>
 
+    @Query("SELECT tagId FROM recipe_tags WHERE dishId = :dishId")
+    suspend fun tagIdsFor(dishId: Long): List<Long>
+
     // ---- Backup ---------------------------------------------------------------------
 
     @Query("SELECT * FROM tags")

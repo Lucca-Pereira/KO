@@ -50,6 +50,7 @@ class AppContainer(context: Context) {
             tagDao = database.tagDao(),
             pantryDao = database.pantryDao(),
             shoppingDao = database.shoppingDao(),
+            mealPlanDao = database.mealPlanDao(),
             mealDb = mealDb,
         )
     }

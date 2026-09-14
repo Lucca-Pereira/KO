@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Camera capture targets for recipe photos. Only the one directory is shared, and only
+     with the camera app the user picked, for as long as the intent grant lasts. -->
+<paths>
+    <files-path name="recipe_images" path="recipe_images/" />
+</paths>

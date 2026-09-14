@@ -2,9 +2,9 @@ package com.lucca.ko.ui.plan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.relations.PlannedRecipe
+import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.ui.koFactory
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -33,6 +33,13 @@ data class PlanUiState(
     val isCurrentWeek: Boolean = true,
     val days: List<DayPlan> = emptyList(),
 )
+
+fun MealSlot.label(): String = when (this) {
+    MealSlot.BREAKFAST -> "Breakfast"
+    MealSlot.LUNCH -> "Lunch"
+    MealSlot.DINNER -> "Dinner"
+    MealSlot.OTHER -> "Other"
+}
 
 private fun mondayOf(date: LocalDate): LocalDate =
     date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
@@ -80,6 +87,15 @@ class PlanViewModel(private val repo: MealPlanRepository) : ViewModel() {
 
     /** Removes the planned meal only — the recipe stays in the library. */
     fun removeEntry(id: Long) = viewModelScope.launch { repo.removePlanEntry(id) }
+
+    /** Ticking this also bumps the recipe's own cooked count and last-cooked date. */
+    fun setCooked(id: Long, cooked: Boolean) = viewModelScope.launch { repo.setCooked(id, cooked) }
+
+    fun setServings(id: Long, servings: Double) =
+        viewModelScope.launch { repo.setServings(id, servings) }
+
+    fun move(id: Long, date: LocalDate, slot: MealSlot) =
+        viewModelScope.launch { repo.move(id, date, slot) }
 
     companion object {
         val Factory = koFactory { PlanViewModel(it.mealPlanRepository) }

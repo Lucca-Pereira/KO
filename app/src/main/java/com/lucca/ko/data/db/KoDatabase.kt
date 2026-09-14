@@ -66,5 +66,6 @@ abstract class KoDatabase : RoomDatabase() {
                 .build()
                 .also { instance = it }
         }
+
     }
 }

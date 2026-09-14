@@ -4,17 +4,21 @@ A personal Android app to run your kitchen:
 
 - **Pantry** – everything you keep at home, products and spices. Each item is
   *In stock*, *Low*, or *Out*. Tap the status pill to cycle it.
-- **Meal plan** – a weekly calendar. Add dishes per day/slot, either by asking the
-  recipe bot, searching [TheMealDB](https://www.themealdb.com), or entering one by hand.
-- **Dish view** – the ingredient list, each line **green** (you have it) or **red**
-  (you don't), a link to the real recipe on the web, and the instructions. Mark an
-  ingredient *Ran out* and it flips your pantry and lands on the shopping list.
+- **Meal plan** – a weekly calendar. Add a meal from your recipe library, by asking
+  the recipe bot, by searching [TheMealDB](https://www.themealdb.com), or by writing
+  one yourself. Tick a meal off as cooked, change its servings, or move it to another day.
+- **Recipes** – your own library. Recipes are yours to keep: save, favourite, tag and
+  search them, and plan the same one on as many days as you like. Every recipe is fully
+  editable – photo, servings, times, tags, notes, ingredients and step-by-step method.
 - **Shopping list** – auto-filled from anything that runs out, plus manual entries.
   Tick an item off and it goes back to the pantry as *In stock*.
 
+Ingredients are colour-coded against your pantry: **green** if you have it, **red** if
+you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping list.
+
 The "bot" is **your own [Ollama](https://ollama.com) server** on your home network –
-no cloud account, no API key. It only proposes dish ideas; the actual recipes,
-ingredients, photos and source links come from TheMealDB.
+no cloud account, no API key. It proposes dish ideas; recipe content comes from
+TheMealDB or from you.
 
 ## Install
 
@@ -25,6 +29,11 @@ ingredients, photos and source links come from TheMealDB.
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.4.0:** the database changes shape on first launch — recipes stop
+> being throwaway attachments to a calendar day and become a library of their own, and
+> duplicate copies of the same TheMealDB meal are merged. Export a backup from
+> *Settings → Export* first, then install over the top **without uninstalling**.
+>
 > **Upgrading from v0.1.1 or earlier:** those builds were each signed with a
 > throwaway key, so Android will refuse to install a newer one on top. **Uninstall
 > KO Kitchen once**, then install v0.1.2+. From v0.1.2 on, every build uses one
@@ -55,15 +64,21 @@ Requires JDK 17 and the Android SDK (Android Studio Koala or newer).
 git clone https://github.com/<you>/KO.git
 cd KO
 ./gradlew assembleDebug        # APK in app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # unit tests
+./gradlew testDebugUnitTest    # unit tests, including the database migrations
 ```
+
+Database schemas are exported to `app/schemas/` and committed. Any change to an entity
+needs a matching migration in `data/db/Migrations.kt` and a test in `MigrationTest` —
+there is no destructive fallback, so a missing migration fails loudly instead of
+quietly deleting the pantry.
 
 Open the folder in Android Studio and press Run to deploy to a device/emulator.
 
 ## Tech
 
-Kotlin · Jetpack Compose · Room · DataStore · OkHttp + kotlinx.serialization ·
-Coil · single-module, manual DI. CI in
+Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
+DataStore · OkHttp + kotlinx.serialization · Coil · type-safe Navigation ·
+single-module, manual DI. CI in
 [`.github/workflows/android.yml`](.github/workflows/android.yml) builds the APK and
 attaches it to every `v*` tag.
 

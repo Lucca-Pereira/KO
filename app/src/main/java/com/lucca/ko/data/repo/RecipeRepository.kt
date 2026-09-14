@@ -4,9 +4,11 @@ import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.Recipe
 import com.lucca.ko.data.db.RecipeIngredient
 import com.lucca.ko.data.db.RecipeSource
+import com.lucca.ko.data.db.RecipeTag
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.db.Tag
+import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.db.dao.ShoppingDao
@@ -19,8 +21,15 @@ import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
 import com.lucca.ko.domain.PantryResolver
+import com.lucca.ko.domain.recipe.RecipeDraft
+import com.lucca.ko.domain.recipe.toIngredients
+import com.lucca.ko.domain.recipe.toRecipe
+import com.lucca.ko.domain.recipe.toSteps
 import com.lucca.ko.domain.units.MeasureParser
 import kotlinx.coroutines.flow.Flow
+
+/** Recipes sharing a normalised title. */
+data class DuplicateGroup(val normalizedTitle: String, val recipes: List<Recipe>)
 
 /**
  * The recipe library.
@@ -34,6 +43,7 @@ class RecipeRepository(
     private val tagDao: TagDao,
     private val pantryDao: PantryDao,
     private val shoppingDao: ShoppingDao,
+    private val mealPlanDao: MealPlanDao,
     private val mealDb: MealDbClient,
 ) {
     fun observeRecipe(id: Long): Flow<RecipeWithDetails?> = recipeDao.observeRecipe(id)
@@ -147,16 +157,17 @@ class RecipeRepository(
 
     suspend fun setTags(dishId: Long, names: List<String>) {
         tagDao.unlinkAllFor(dishId)
-        names.map { it.trim() }.filter { it.isNotEmpty() }.distinct().forEach { name ->
-            val normalized = IngredientMatcher.normalize(name).ifBlank { name.lowercase() }
-            val existing = tagDao.byNormalized(normalized)
-            val tagId = existing?.id
-                ?: tagDao.insert(Tag(name = name, normalizedName = normalized))
+        names.map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+            .forEach { name ->
+                val normalized = IngredientMatcher.normalize(name).ifBlank { name.lowercase() }
+                // insert() is IGNORE-on-conflict, so it returns -1 for a tag that already
+                // exists; fall back to looking it up rather than dropping the link.
+                val tagId = tagDao.insert(Tag(name = name, normalizedName = normalized))
                     .takeIf { it > 0 }
-                ?: tagDao.byNormalized(normalized)?.id
-                ?: return@forEach
-            tagDao.link(com.lucca.ko.data.db.RecipeTag(dishId = dishId, tagId = tagId))
-        }
+                    ?: tagDao.byNormalized(normalized)?.id
+                    ?: return@forEach
+                tagDao.link(RecipeTag(dishId = dishId, tagId = tagId))
+            }
         tagDao.deleteUnusedTags()
         refreshSearchBlob(dishId)
     }
@@ -180,6 +191,71 @@ class RecipeRepository(
         }
         recipeDao.setSearchBlob(dishId, parts.joinToString(" ").lowercase())
     }
+
+    /**
+     * Saves everything the editor holds in one go: the recipe, its ingredients, its steps and
+     * its tags. Ingredients and steps are replaced wholesale rather than diffed — see
+     * [RecipeDao.replaceIngredients].
+     *
+     * Returns the recipe id, which is newly allocated when the draft was new.
+     */
+    suspend fun saveDraft(draft: RecipeDraft): Long {
+        val now = System.currentTimeMillis()
+        val recipe = draft.toRecipe(now)
+        val id = if (draft.isNew) {
+            recipeDao.insertRecipe(recipe)
+        } else {
+            recipeDao.updateRecipe(recipe)
+            draft.id
+        }
+        recipeDao.replaceIngredients(id, draft.toIngredients(id))
+        recipeDao.replaceSteps(id, draft.toSteps(id))
+        setTags(id, draft.tags)
+        // A rename must not leave the plan showing the old name in its fallback snapshot.
+        mealPlanDao.refreshTitleSnapshots(id, recipe.title)
+        refreshSearchBlob(id)
+        return id
+    }
+
+    // ---- Duplicates ----------------------------------------------------------------
+
+    /**
+     * Recipes that share a normalised title, for the Find duplicates tool.
+     *
+     * The 2 -> 3 migration already collapsed MealDB duplicates automatically, because a shared
+     * `mealdbId` is unambiguous. Titles are not: two homemade "Pasta" recipes may be genuinely
+     * different, so these are surfaced for a human decision and never merged on their own.
+     */
+    suspend fun findDuplicates(): List<DuplicateGroup> =
+        recipeDao.allRecipesForDuplicateScan()
+            .groupBy { IngredientMatcher.normalize(it.title).ifBlank { it.title.trim().lowercase() } }
+            .filter { (key, group) -> key.isNotBlank() && group.size > 1 }
+            .map { (key, group) -> DuplicateGroup(key, group.sortedBy { it.id }) }
+            .sortedBy { it.recipes.first().title.lowercase() }
+
+    /**
+     * Merges [dropIds] into [keepId]: plan entries are repointed, tags are unioned, and the
+     * losers are deleted. Ingredients and steps are *not* merged — the kept recipe is assumed to
+     * be the good one, which is why the UI shows both side by side before you choose.
+     */
+    suspend fun mergeRecipes(keepId: Long, dropIds: List<Long>) {
+        val keeper = recipeDao.recipeById(keepId) ?: return
+        val keptTagIds = tagDao.tagIdsFor(keepId).toMutableSet()
+        dropIds.filter { it != keepId }.forEach { dropId ->
+            tagDao.tagIdsFor(dropId).forEach { tagId ->
+                if (keptTagIds.add(tagId)) {
+                    tagDao.link(RecipeTag(dishId = keepId, tagId = tagId))
+                }
+            }
+            mealPlanDao.repointRecipe(from = dropId, to = keepId, title = keeper.title)
+            recipeDao.deleteRecipe(dropId)
+        }
+        tagDao.deleteUnusedTags()
+        refreshSearchBlob(keepId)
+    }
+
+    /** How many planned meals point at this recipe — shown before deleting it. */
+    suspend fun planCountFor(recipeId: Long): Int = mealPlanDao.countForRecipe(recipeId)
 
     // ---- Pantry interplay ----------------------------------------------------------
 
