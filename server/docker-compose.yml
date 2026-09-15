@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     ports:
       # <tailscale-ip>:<host port>:<container port>
-      - "100.67.219.26:8080:8080"
+      - "100.67.219.26:8090:8080"
     environment:
       # Ollama runs on the NAS itself, outside this container.
       KO_OLLAMA_URL: "http://host.docker.internal:11434"

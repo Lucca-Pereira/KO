@@ -38,7 +38,7 @@ than everything else here put together.
 cp .env.example .env
 # edit .env: set KO_API_TOKEN (openssl rand -hex 32)
 docker compose up -d --build
-curl http://100.67.219.26:8080/health
+curl http://100.67.219.26:8090/health
 ```
 
 Pull the models on the NAS first:
@@ -54,7 +54,7 @@ model name degrades quietly instead of breaking the app — check the log for th
 
 ### Bind address
 
-`docker-compose.yml` publishes on `100.67.219.26:8080`, the NAS's Tailscale address. That is
+`docker-compose.yml` publishes on `100.67.219.26:8090`, the NAS's Tailscale address. That is
 what decides who can reach the service: the tailnet can, the LAN cannot. Change that IP and you
 change who has access. Do not publish on `0.0.0.0`.
 
@@ -77,7 +77,7 @@ Add the MCP endpoint to Claude Code or Claude Desktop:
   "mcpServers": {
     "ko-kitchen": {
       "type": "http",
-      "url": "http://100.67.219.26:8080/mcp",
+      "url": "http://100.67.219.26:8090/mcp",
       "headers": { "Authorization": "Bearer YOUR_TOKEN" }
     }
   }

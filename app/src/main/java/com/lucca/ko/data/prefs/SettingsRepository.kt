@@ -18,11 +18,11 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 /**
  * The KO brain service on the home NAS, over Tailscale.
  *
- * A Tailscale address rather than the LAN IP because the LAN one is DHCP and moves. Port 8080 is
+ * A Tailscale address rather than the LAN IP because the LAN one is DHCP and moves. Port 8090 is
  * the brain, not Ollama's 11434 — the app no longer talks to Ollama directly, and pointing this
  * at 11434 will only produce confusing 404s.
  */
-const val DEFAULT_NAS_URL = "http://100.67.219.26:8080"
+const val DEFAULT_NAS_URL = "http://100.67.219.26:8090"
 
 @Serializable
 data class AppSettings(

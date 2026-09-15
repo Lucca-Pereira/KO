@@ -62,7 +62,7 @@ prompt, wraps Ollama, and serves both this app and Claude (over MCP). See
 
 Once it is up, in **Settings → Recipe bot**:
 
-1. **Brain URL** — `http://<nas>:8080`. Port 8080, not Ollama's 11434; the app no longer talks
+1. **Brain URL** — `http://<nas>:8090`. Port 8090, not Ollama's 11434; the app no longer talks
    to Ollama directly.
 2. **Access token** — the `KO_API_TOKEN` from the server's `.env`.
 3. **Test connection**.
