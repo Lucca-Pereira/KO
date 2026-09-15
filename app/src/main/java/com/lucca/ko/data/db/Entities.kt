@@ -29,7 +29,12 @@ val PRESET_CATEGORIES = listOf(
 
 @Entity(
     tableName = "pantry_items",
-    indices = [Index(value = ["normalizedName"], unique = true)],
+    // NULLs are distinct in a SQLite unique index, so unsynced rows (remoteId null) coexist
+    // freely while a synced one can only ever match one NAS-side row.
+    indices = [
+        Index(value = ["normalizedName"], unique = true),
+        Index(value = ["remoteId"], unique = true),
+    ],
 )
 data class PantryItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -43,6 +48,11 @@ data class PantryItem(
      *  Null until the user runs "Translate pantry" in Settings. */
     val searchName: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
+    /** Assigned locally (UUID) the moment this row is created, whether or not sync is even
+     *  configured yet — see MIGRATION_7_8's kdoc for why it can't be assigned by the server. */
+    val remoteId: String? = null,
+    /** Null means never pushed. Set to the server's clock time once a push of this row succeeds. */
+    val syncedAt: Long? = null,
 )
 
 /**
@@ -61,8 +71,11 @@ data class PantryItem(
 @Entity(
     tableName = "dishes",
     // NULLs are distinct in a SQLite unique index, so every manual recipe coexists happily while
-    // a MealDB recipe can only be imported once.
-    indices = [Index(value = ["mealdbId"], unique = true)],
+    // a MealDB recipe can only be imported once — same trick for remoteId/sync below.
+    indices = [
+        Index(value = ["mealdbId"], unique = true),
+        Index(value = ["remoteId"], unique = true),
+    ],
 )
 data class Recipe(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -99,6 +112,12 @@ data class Recipe(
 
     /** Lowercased title + tags + ingredient names; library search LIKEs against this. */
     val searchBlob: String? = null,
+
+    /** Assigned locally (UUID) the moment this row is created, whether or not sync is even
+     *  configured yet — see MIGRATION_7_8's kdoc for why it can't be assigned by the server. */
+    val remoteId: String? = null,
+    /** Null means never pushed. Set to the server's clock time once a push of this row succeeds. */
+    val syncedAt: Long? = null,
 )
 
 @Entity(
@@ -232,7 +251,7 @@ data class RecipeRevision(
             onDelete = ForeignKey.SET_NULL,
         ),
     ],
-    indices = [Index("dishId"), Index("date")],
+    indices = [Index("dishId"), Index("date"), Index(value = ["remoteId"], unique = true)],
 )
 data class MealPlanEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -246,11 +265,19 @@ data class MealPlanEntry(
     val note: String? = null,
     @ColumnInfo(defaultValue = "0") val cooked: Boolean = false,
     @ColumnInfo(defaultValue = "0") val sortOrder: Int = 0,
+    /** Assigned locally (UUID) at creation time. Meal-plan entries only ever push once as new
+     *  rows — no edit-sync — so unlike Recipe/PantryItem there's no updatedAt to compare. */
+    val remoteId: String? = null,
+    /** Null means never pushed; set once a push of this row succeeds. */
+    val syncedAt: Long? = null,
 )
 
 @Entity(
     tableName = "shopping_items",
-    indices = [Index(value = ["normalizedName"], unique = true)],
+    indices = [
+        Index(value = ["normalizedName"], unique = true),
+        Index(value = ["remoteId"], unique = true),
+    ],
 )
 data class ShoppingListItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -260,4 +287,9 @@ data class ShoppingListItem(
     val pantryItemId: Long? = null,
     val checked: Boolean = false,
     val addedAt: Long = System.currentTimeMillis(),
+    /** Assigned locally (UUID) at creation time. Shopping items only ever push once as new rows
+     *  — no edit-sync (checked/unchecked state stays phone-local). */
+    val remoteId: String? = null,
+    /** Null means never pushed; set once a push of this row succeeds. */
+    val syncedAt: Long? = null,
 )

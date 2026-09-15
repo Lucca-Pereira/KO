@@ -440,7 +440,56 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/**
+ * v7 -> v8: correlation columns for NAS sync (`dishes`, `pantry_items`, `shopping_items`,
+ * `meal_plan` each get `remoteId`/`syncedAt`).
+ *
+ * `remoteId` is a UUID the *phone* assigns at row-creation time, never one handed back by the
+ * server during a push. If it were server-assigned, a push whose response got lost to a network
+ * drop (after the server had already applied the write) would retry with no id and the server
+ * would create a duplicate row. Assigning it locally up front — for every new row, synced or not
+ * — makes every push idempotent: retrying a push that already landed is a no-op keyed on the same
+ * id, not a duplicate.
+ *
+ * `syncedAt` is separate: null means "never pushed"; once a push of that row succeeds it is
+ * stamped with the server's clock time for that push. For `dishes`/`pantry_items` (the two with
+ * `updatedAt`), the push set is `syncedAt IS NULL OR updatedAt > syncedAt`. `shopping_items` and
+ * `meal_plan` have no `updatedAt` — they only ever push once as new rows — so their push set is
+ * just `syncedAt IS NULL`.
+ *
+ * Existing rows get `remoteId = NULL, syncedAt = NULL` (SQLite's `ADD COLUMN` default for a
+ * nullable column with no explicit default), which is correct: they've never synced, and picking
+ * up a NAS-hosted sync service to point at is what turns them into "unpushed" rather than
+ * something needing backfilled ids.
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE dishes ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE dishes ADD COLUMN syncedAt INTEGER")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_dishes_remoteId ON dishes (remoteId)")
+
+        db.execSQL("ALTER TABLE pantry_items ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE pantry_items ADD COLUMN syncedAt INTEGER")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_pantry_items_remoteId ON pantry_items (remoteId)",
+        )
+
+        db.execSQL("ALTER TABLE shopping_items ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE shopping_items ADD COLUMN syncedAt INTEGER")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_shopping_items_remoteId ON shopping_items (remoteId)",
+        )
+
+        db.execSQL("ALTER TABLE meal_plan ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE meal_plan ADD COLUMN syncedAt INTEGER")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_meal_plan_remoteId ON meal_plan (remoteId)",
+        )
+    }
+}
+
 /** Every migration the database knows about, in order. */
 val KO_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+    MIGRATION_7_8,
 )

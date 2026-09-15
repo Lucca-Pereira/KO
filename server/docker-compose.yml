@@ -1,0 +1,22 @@
+# KO sync on the NAS.
+#
+# The container binds 0.0.0.0 *inside* its own network namespace; the published port below is
+# what decides who can reach it. Publishing on the Tailscale address means the tailnet can and
+# the LAN cannot — change that IP and you change who has access.
+services:
+  ko-sync:
+    build: .
+    container_name: ko-sync
+    restart: unless-stopped
+    ports:
+      # <tailscale-ip>:<host port>:<container port>
+      # 100.67.219.26 is this NAS's Tailscale IP as of the old ko-brain service (be22767) —
+      # confirm it's still current before deploying.
+      - "100.67.219.26:8090:8090"
+    environment:
+      KO_API_TOKEN: "${KO_API_TOKEN:?set KO_API_TOKEN in .env}"
+    volumes:
+      - ko-sync-data:/data
+
+volumes:
+  ko-sync-data:

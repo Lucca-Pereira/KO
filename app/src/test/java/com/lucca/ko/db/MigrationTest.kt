@@ -9,6 +9,7 @@ import com.lucca.ko.data.db.MIGRATION_3_4
 import com.lucca.ko.data.db.MIGRATION_4_5
 import com.lucca.ko.data.db.MIGRATION_5_6
 import com.lucca.ko.data.db.MIGRATION_6_7
+import com.lucca.ko.data.db.MIGRATION_7_8
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -436,6 +437,57 @@ class MigrationTest {
             assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
             val threw = runCatching { db.query("SELECT * FROM agent_messages").close() }.isFailure
             assertTrue("agent_messages should be dropped", threw)
+        }
+    }
+
+    // ---- 7 -> 8: remoteId/syncedAt sync-correlation columns ------------------------
+
+    @Test
+    fun migrate7To8_validatesAgainstTheEntities() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).close()
+    }
+
+    @Test
+    fun migrate7To8_existingRowsKeepRemoteIdAndSyncedAtNull() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).use { db ->
+            assertNull(db.longOrNull("SELECT remoteId FROM dishes WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT syncedAt FROM dishes WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT remoteId FROM pantry_items WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT remoteId FROM shopping_items WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT remoteId FROM meal_plan WHERE id = 1"))
+        }
+    }
+
+    @Test
+    fun migrate7To8_remoteIdIsUniqueButManyNullsCoexist() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).use { db ->
+            // Three pre-existing pantry rows all have remoteId = NULL; that must not collide.
+            assertEquals(3, db.count("SELECT COUNT(*) FROM pantry_items"))
+
+            // Fresh rows, not the seeded ids: migrate2To3 dedupes the seed's two same-mealdbId
+            // dishes down to one, so reusing those ids here would make the second write a
+            // trivial no-op (matching zero rows) rather than a real conflict.
+            db.execSQL(
+                "INSERT INTO dishes (id, title, createdAt, remoteId) VALUES (101, 'A', 1, 'r-1')",
+            )
+            val threw = runCatching {
+                db.execSQL(
+                    "INSERT INTO dishes (id, title, createdAt, remoteId) VALUES (102, 'B', 1, 'r-1')",
+                )
+            }.isFailure
+            assertTrue("a second row claiming the same remoteId should violate the unique index", threw)
         }
     }
 }
