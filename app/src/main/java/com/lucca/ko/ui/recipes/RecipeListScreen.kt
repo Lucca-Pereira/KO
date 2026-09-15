@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
@@ -57,7 +56,6 @@ import com.lucca.ko.ui.common.RecipeThumbnail
 fun RecipeListScreen(
     onOpenRecipe: (Long) -> Unit,
     onNewRecipe: () -> Unit,
-    onAskAgent: () -> Unit,
     onFindDuplicates: () -> Unit,
     vm: RecipeListViewModel = viewModel(factory = RecipeListViewModel.Factory),
 ) {
@@ -69,9 +67,6 @@ fun RecipeListScreen(
             KoTopBar(
                 title = "Recipes",
                 actions = {
-                    IconButton(onClick = onAskAgent) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Ask the agent")
-                    }
                     IconButton(onClick = vm::toggleFavouritesOnly) {
                         Icon(
                             if (state.favouritesOnly) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -150,8 +145,9 @@ fun RecipeListScreen(
 
                 state.recipes.isEmpty() -> EmptyState(
                     title = "No recipes yet",
-                    subtitle = "Add one by hand with +, or ask the agent for ideas. " +
-                        "Recipes you save stay here, ready to plan on any day.",
+                    subtitle = "Add one by hand with +, or ask Claude for ideas and import " +
+                        "what it gives you (see Settings). Recipes stay here, ready to plan on " +
+                        "any day.",
                 )
 
                 else -> LazyColumn(

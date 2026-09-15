@@ -12,7 +12,6 @@ import com.lucca.ko.data.db.Supplement
 import com.lucca.ko.data.db.SupplementKind
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.remote.OpenFoodFactsClient
-import com.lucca.ko.data.remote.claude.ClaudeClient
 import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.RecipeRepository
@@ -65,7 +64,6 @@ class NutritionRepositoryTest {
         val http = OkHttpClient()
         // Points nowhere: `lookupBarcode` must fall back to "not found" rather than hang or crash.
         val off = OpenFoodFactsClient(http, baseUrl = "http://127.0.0.1:1/")
-        val claude = ClaudeClient(http = http, apiKeyProvider = { "" })
         val profileRepo = ProfileRepository(context)
 
         nutrition = NutritionRepository(
@@ -75,7 +73,6 @@ class NutritionRepositoryTest {
             recipeDao = db.recipeDao(),
             profileRepo = profileRepo,
             offClient = off,
-            claude = claude,
         )
         body = BodyRepository(db.bodyDao(), profileRepo)
         supplements = SupplementRepository(db.supplementDao(), db.nutritionDao())

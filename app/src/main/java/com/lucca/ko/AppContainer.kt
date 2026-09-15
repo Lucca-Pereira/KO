@@ -4,13 +4,10 @@ import android.content.Context
 import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.prefs.ProfileRepository
-import com.lucca.ko.data.prefs.SecretsRepository
 import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.data.remote.OpenFoodFactsClient
-import com.lucca.ko.data.remote.claude.ClaudeClient
-import com.lucca.ko.data.remote.claude.KitchenTools
 import com.lucca.ko.data.repair.StartupRepairs
-import com.lucca.ko.data.repo.AgentRepository
+import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.NutritionRepository
@@ -41,12 +38,6 @@ class AppContainer(context: Context) {
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
 
-    val secretsRepository: SecretsRepository by lazy { SecretsRepository(appContext) }
-
-    val claudeClient: ClaudeClient by lazy {
-        ClaudeClient(http = httpClient, apiKeyProvider = { secretsRepository.currentApiKey() })
-    }
-
     private val openFoodFactsClient: OpenFoodFactsClient by lazy { OpenFoodFactsClient(httpClient) }
 
     val pantryRepository: PantryRepository by lazy {
@@ -57,7 +48,7 @@ class AppContainer(context: Context) {
         ShoppingRepository(database.shoppingDao(), database.pantryDao())
     }
 
-    val revisionRepository: RevisionRepository by lazy { RevisionRepository(database.chatDao()) }
+    val revisionRepository: RevisionRepository by lazy { RevisionRepository(database.revisionDao()) }
 
     val recipeRepository: RecipeRepository by lazy {
         RecipeRepository(
@@ -73,18 +64,14 @@ class AppContainer(context: Context) {
         MealPlanRepository(database.mealPlanDao(), database.recipeDao())
     }
 
-    private val kitchenTools: KitchenTools by lazy {
-        KitchenTools(
-            pantryRepository = pantryRepository,
+    val agentImportRepository: AgentImportRepository by lazy {
+        AgentImportRepository(
             recipeRepository = recipeRepository,
+            pantryRepository = pantryRepository,
             mealPlanRepository = mealPlanRepository,
             shoppingRepository = shoppingRepository,
             revisionRepository = revisionRepository,
         )
-    }
-
-    val agentRepository: AgentRepository by lazy {
-        AgentRepository(chatDao = database.chatDao(), claude = claudeClient, tools = kitchenTools)
     }
 
     val profileRepository: ProfileRepository by lazy { ProfileRepository(appContext) }
@@ -97,7 +84,6 @@ class AppContainer(context: Context) {
             recipeDao = database.recipeDao(),
             profileRepo = profileRepository,
             offClient = openFoodFactsClient,
-            claude = claudeClient,
         )
     }
 

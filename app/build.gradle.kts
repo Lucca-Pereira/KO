@@ -13,8 +13,8 @@ android {
         applicationId = "com.lucca.ko"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.8.0"
+        versionCode = 16
+        versionName = "0.8.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }

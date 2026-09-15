@@ -3,33 +3,12 @@ package com.lucca.ko.data.db.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
-import androidx.room.Update
-import com.lucca.ko.data.db.AgentMessage
 import com.lucca.ko.data.db.RecipeRevision
 import kotlinx.coroutines.flow.Flow
 
+/** The undo stack for recipe edits — see [com.lucca.ko.data.repo.RevisionRepository]. */
 @Dao
-interface ChatDao {
-
-    @Query("SELECT * FROM agent_messages WHERE sessionKey = :sessionKey ORDER BY createdAt, id")
-    fun observeMessages(sessionKey: String): Flow<List<AgentMessage>>
-
-    @Query("SELECT * FROM agent_messages WHERE sessionKey = :sessionKey ORDER BY createdAt, id")
-    suspend fun messagesFor(sessionKey: String): List<AgentMessage>
-
-    @Query("SELECT * FROM agent_messages WHERE id = :id")
-    suspend fun messageById(id: Long): AgentMessage?
-
-    @Insert
-    suspend fun insertMessage(message: AgentMessage): Long
-
-    @Update
-    suspend fun updateMessage(message: AgentMessage)
-
-    @Query("DELETE FROM agent_messages WHERE sessionKey = :sessionKey")
-    suspend fun clearChat(sessionKey: String)
-
-    // ---- Revisions -------------------------------------------------------------------
+interface RevisionDao {
 
     @Insert
     suspend fun insertRevision(revision: RecipeRevision): Long

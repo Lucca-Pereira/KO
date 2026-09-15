@@ -48,9 +48,6 @@ class RecipeDetailViewModel(
 
     private val planCount = MutableStateFlow(0)
 
-    private val _estimating = MutableStateFlow(false)
-    val estimating = _estimating.asStateFlow()
-
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
@@ -123,23 +120,11 @@ class RecipeDetailViewModel(
         planCount.value = recipes.planCountFor(recipeId)
     }
 
-    /** Asks Claude for this recipe's macros and stores them on it. */
-    fun estimateMacros() = viewModelScope.launch {
-        _estimating.value = true
-        val result = nutrition.estimateRecipe(recipeId)
-        _estimating.value = false
-        _message.value = when {
-            result == null -> "Couldn't reach Claude — check your API key in Settings."
-            result.note.isNotBlank() -> result.note
-            else -> "Macros updated."
-        }
-    }
-
     /** Logs a portion of this recipe into today's food diary. */
     fun logServings(servings: Double) = viewModelScope.launch {
         val logged = nutrition.logRecipe(recipeId, servings, java.time.LocalDate.now(), LogSlot.DINNER)
         _message.value = if (logged == null) {
-            "Work out the macros first, then it can go in the diary."
+            "This recipe has no macros yet — ask Claude for them and import the file (Settings)."
         } else {
             "Logged $servings serving${if (servings == 1.0) "" else "s"}."
         }

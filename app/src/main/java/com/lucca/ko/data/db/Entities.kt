@@ -17,14 +17,6 @@ enum class MealSlot { BREAKFAST, LUNCH, DINNER, OTHER }
 @Serializable
 enum class RecipeSource { MEALDB, MANUAL, AI, IMPORT }
 
-/** Who said it, in a recipe chat. */
-@Serializable
-enum class ChatRole { USER, ASSISTANT }
-
-/** What became of an edit the model offered. */
-@Serializable
-enum class ProposalStatus { PENDING, ACCEPTED, REJECTED }
-
 /** How a recipe's per-serving macros were arrived at. */
 @Serializable
 enum class MacroSource { AI, COMPUTED, MANUAL }
@@ -195,38 +187,6 @@ data class Tag(
 data class RecipeTag(
     val dishId: Long,
     val tagId: Long,
-)
-
-/**
- * One message in a conversation with the recipe agent.
- *
- * [sessionKey] identifies which conversation this belongs to — `"general"` for an unscoped chat,
- * `"recipe:<id>"` when opened from a specific recipe, `"plan:<date>:<slot>"` when opened from a
- * plan slot. Not a foreign key to [Recipe]: a general or plan-scoped conversation has no recipe to
- * point at, and a recipe-scoped one should survive the recipe being deleted mid-conversation
- * rather than vanish along with it.
- *
- * An assistant message may carry a [proposalJson] — the raw arguments of a tool call the agent
- * wants to make (save a recipe, add to the plan, add to shopping) — plus [proposalTool] saying
- * which tool. It is stored as JSON rather than applied immediately because the user reviews it
- * first; a rejected proposal leaves nothing behind.
- */
-@Entity(
-    tableName = "agent_messages",
-    indices = [Index("sessionKey")],
-)
-data class AgentMessage(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val sessionKey: String,
-    val role: ChatRole,
-    val content: String,
-    val createdAt: Long = System.currentTimeMillis(),
-    /** Which tool the agent wants to call, when this message proposes an action. */
-    val proposalTool: String? = null,
-    /** That tool call's raw arguments, as JSON. */
-    val proposalJson: String? = null,
-    val proposalSummary: String? = null,
-    val proposalStatus: ProposalStatus? = null,
 )
 
 /**

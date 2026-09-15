@@ -429,6 +429,18 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/**
+ * v6 -> v7: the in-app recipe agent is gone entirely — no more Claude API calls from the phone,
+ * which means no more chat to store. `agent_messages` drops with it; `recipe_revisions` (the
+ * undo stack) stays, since the manual editor still uses it independently of any chat.
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE agent_messages")
+    }
+}
+
 /** Every migration the database knows about, in order. */
-val KO_MIGRATIONS =
-    arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+val KO_MIGRATIONS = arrayOf(
+    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+)

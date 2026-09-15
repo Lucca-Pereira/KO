@@ -32,7 +32,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.lucca.ko.ui.agent.AgentChatScreen
 import com.lucca.ko.ui.common.LocalOpenSettings
 import com.lucca.ko.ui.nutrition.FoodEditScreen
 import com.lucca.ko.ui.nutrition.NutritionHubScreen
@@ -122,7 +121,6 @@ fun KoRoot() {
                     composable<PlanRoute> {
                         PlanScreen(
                             onPickFromLibrary = { d, s -> navController.navigate(RecipePickerRoute(d, s)) },
-                            onAskAgent = { d, s -> navController.navigate(AgentChatRoute(date = d, slot = s)) },
                             onNewRecipe = { _, _ -> navController.navigate(RecipeEditRoute()) },
                             onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
                         )
@@ -132,7 +130,6 @@ fun KoRoot() {
                         RecipeListScreen(
                             onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
                             onNewRecipe = { navController.navigate(RecipeEditRoute()) },
-                            onAskAgent = { navController.navigate(AgentChatRoute()) },
                             onFindDuplicates = { navController.navigate(DuplicatesRoute) },
                         )
                     }
@@ -168,12 +165,7 @@ fun KoRoot() {
                         RecipeDetailScreen(
                             onBack = { navController.popBackStack() },
                             onEdit = { id -> navController.navigate(RecipeEditRoute(id)) },
-                            onChat = { id -> navController.navigate(AgentChatRoute(recipeId = id)) },
                         )
-                    }
-
-                    composable<AgentChatRoute> {
-                        AgentChatScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable<RecipeEditRoute> {

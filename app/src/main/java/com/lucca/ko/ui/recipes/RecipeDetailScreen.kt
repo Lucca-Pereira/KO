@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
@@ -80,7 +79,6 @@ import java.util.Locale
 fun RecipeDetailScreen(
     onBack: () -> Unit,
     onEdit: (Long) -> Unit,
-    onChat: (Long) -> Unit,
     vm: RecipeDetailViewModel = viewModel(factory = RecipeDetailViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -90,7 +88,6 @@ fun RecipeDetailScreen(
     var planning by remember { mutableStateOf(false) }
     var justPlanned by remember { mutableStateOf<String?>(null) }
     val snackbarHost = remember { SnackbarHostState() }
-    val estimating by vm.estimating.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
 
     LaunchedEffect(message) {
@@ -181,12 +178,6 @@ fun RecipeDetailScreen(
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
-                            )
-                        }
-                        IconButton(onClick = { onChat(recipe.id) }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Chat,
-                                contentDescription = "Ask about this recipe",
                             )
                         }
                         IconButton(onClick = { onEdit(recipe.id) }) {
@@ -280,8 +271,6 @@ fun RecipeDetailScreen(
                         fatG = recipe.fatG,
                         note = recipe.macroNote,
                         servings = recipe.servings,
-                        estimating = estimating,
-                        onEstimate = vm::estimateMacros,
                         onLog = { vm.logServings(1.0) },
                     )
                 }
@@ -493,7 +482,7 @@ private fun PlanTargetSheet(
     }
 }
 
-/** Per-serving macros, or an offer to work them out — Claude's best estimate from the ingredients. */
+/** Per-serving macros, when Claude has estimated them via an imported recipe file. */
 @Composable
 private fun NutritionCard(
     kcal: Double?,
@@ -502,8 +491,6 @@ private fun NutritionCard(
     fatG: Double?,
     note: String?,
     servings: Int,
-    estimating: Boolean,
-    onEstimate: () -> Unit,
     onLog: () -> Unit,
 ) {
     Card(
@@ -516,7 +503,8 @@ private fun NutritionCard(
             Text("Per serving", style = MaterialTheme.typography.labelMedium)
             if (kcal == null) {
                 Text(
-                    "Macros not worked out yet.",
+                    "Macros not worked out yet — ask Claude and import the numbers " +
+                        "(Settings has how).",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
@@ -533,20 +521,7 @@ private fun NutritionCard(
                 if (!note.isNullOrBlank()) {
                     Text(note, style = MaterialTheme.typography.labelSmall)
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onEstimate, enabled = !estimating) {
-                    Text(
-                        when {
-                            estimating -> "Working it out…"
-                            kcal == null -> "Work out macros"
-                            else -> "Recalculate"
-                        },
-                    )
-                }
-                if (kcal != null) {
-                    TextButton(onClick = onLog) { Text("Log a serving") }
-                }
+                TextButton(onClick = onLog) { Text("Log a serving") }
             }
         }
     }

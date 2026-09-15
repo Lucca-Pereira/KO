@@ -61,7 +61,6 @@ import java.time.ZoneId
 @Composable
 fun PlanScreen(
     onPickFromLibrary: (String, String) -> Unit,
-    onAskAgent: (String, String) -> Unit,
     onNewRecipe: (String, String) -> Unit,
     onOpenRecipe: (Long) -> Unit,
     vm: PlanViewModel = viewModel(factory = PlanViewModel.Factory),
@@ -145,10 +144,6 @@ fun PlanScreen(
                     onClick = { onPickFromLibrary(target.toString(), slot.name); addFor = null },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("From my recipes") }
-                OutlinedButton(
-                    onClick = { onAskAgent(target.toString(), slot.name); addFor = null },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Ask the agent") }
                 OutlinedButton(
                     onClick = { onNewRecipe(target.toString(), slot.name); addFor = null },
                     modifier = Modifier.fillMaxWidth(),

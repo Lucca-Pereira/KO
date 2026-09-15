@@ -7,12 +7,12 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import com.lucca.ko.data.db.dao.BodyDao
-import com.lucca.ko.data.db.dao.ChatDao
 import com.lucca.ko.data.db.dao.FoodDao
 import com.lucca.ko.data.db.dao.NutritionDao
 import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.RecipeDao
+import com.lucca.ko.data.db.dao.RevisionDao
 import com.lucca.ko.data.db.dao.ShoppingDao
 import com.lucca.ko.data.db.dao.SupplementDao
 import com.lucca.ko.data.db.dao.TagDao
@@ -27,13 +27,6 @@ class Converters {
     @TypeConverter fun recipeSourceToString(s: RecipeSource?): String? = s?.name
     @TypeConverter fun stringToRecipeSource(s: String?): RecipeSource? =
         s?.let { runCatching { RecipeSource.valueOf(it) }.getOrDefault(RecipeSource.MANUAL) }
-
-    @TypeConverter fun chatRoleToString(s: ChatRole): String = s.name
-    @TypeConverter fun stringToChatRole(s: String): ChatRole = ChatRole.valueOf(s)
-
-    @TypeConverter fun proposalStatusToString(s: ProposalStatus?): String? = s?.name
-    @TypeConverter fun stringToProposalStatus(s: String?): ProposalStatus? =
-        s?.let { runCatching { ProposalStatus.valueOf(it) }.getOrNull() }
 
     @TypeConverter fun foodSourceToString(s: FoodSource): String = s.name
     @TypeConverter fun stringToFoodSource(s: String): FoodSource =
@@ -66,7 +59,6 @@ class Converters {
         RecipeTag::class,
         MealPlanEntry::class,
         ShoppingListItem::class,
-        AgentMessage::class,
         RecipeRevision::class,
         FoodItem::class,
         NutritionEntry::class,
@@ -75,7 +67,7 @@ class Converters {
         Supplement::class,
         SupplementLog::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -84,7 +76,7 @@ abstract class KoDatabase : RoomDatabase() {
     abstract fun recipeDao(): RecipeDao
     abstract fun tagDao(): TagDao
     abstract fun mealPlanDao(): MealPlanDao
-    abstract fun chatDao(): ChatDao
+    abstract fun revisionDao(): RevisionDao
     abstract fun foodDao(): FoodDao
     abstract fun nutritionDao(): NutritionDao
     abstract fun bodyDao(): BodyDao

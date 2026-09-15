@@ -4,18 +4,16 @@ A personal Android app to run your kitchen:
 
 - **Pantry** – everything you keep at home, products and spices. Each item is
   *In stock*, *Low*, or *Out*. Tap the status pill to cycle it.
-- **Meal plan** – a weekly calendar. Add a meal from your recipe library, by asking
-  the agent, or by writing one yourself. Tick a meal off as cooked, change its servings,
-  or move it to another day.
+- **Meal plan** – a weekly calendar. Add a meal from your recipe library or by writing
+  one yourself. Tick a meal off as cooked, change its servings, or move it to another day.
 - **Recipes** – your own library. Recipes are yours to keep: save, favourite, tag and
   search them, and plan the same one on as many days as you like. Every recipe is fully
   editable – photo, servings, times, tags, notes, ingredients and step-by-step method.
-- **The agent** – a conversation, not a search box. Ask what to cook, get a recipe
-  written down, ask about swaps or scaling for one you already have open, or open it
-  from a specific day on the plan. It can save recipes, add them to your plan and add
-  things to your shopping list — but only ever proposes it first. Every proposal comes
-  back as a review you approve line by line before anything is written, and every
-  applied change can be undone.
+- **Ask Claude for recipes** – not a button in the app, but a workflow: you ask Claude
+  for a dish idea, a written-out recipe, or a pantry/shopping update wherever you already
+  talk to it, and import the small file it gives you from **Settings**. Editing an
+  existing recipe this way is undoable, same as a manual edit. See
+  [Ask Claude for recipes](#ask-claude-for-recipes) below for the exact file shape.
 - **Gym** – a food diary that knows about your kitchen. Calories and macros against a
   target worked out from your own height, weight and goal, and corrected over time from
   what your weight actually does rather than from a formula. Scan a barcode, search a
@@ -27,10 +25,9 @@ A personal Android app to run your kitchen:
 Ingredients are colour-coded against your pantry: **green** if you have it, **red** if
 you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping list.
 
-The agent talks to **the Claude API directly, using your own Anthropic API key** — no
-NAS, no server to run, no Ollama. It finds and writes recipes, answers questions about
-the one you're cooking, and estimates a recipe's macros. Settings is one tap away from
-any screen (the gear, top right), and that's where the key lives.
+KO doesn't call any AI itself — no API key, no billing, no server to run. Recipes and
+pantry updates come from asking Claude directly and importing what it gives you.
+Settings is one tap away from any screen (the gear, top right).
 
 ## Install
 
@@ -41,11 +38,16 @@ any screen (the gear, top right), and that's where the key lives.
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
-> **Upgrading to v0.8.0:** the recipe bot moves off your NAS and into the app itself — it now
-> talks to the Claude API directly, using your own Anthropic API key, and the old NAS URL and
-> token are gone from Settings along with `server/`. Recipe search no longer goes through
-> TheMealDB either; the agent finds and writes recipes itself. Existing recipes, plan and
-> shopping list are untouched — enter an API key in Settings to pick the agent back up.
+> **Upgrading to v0.8.1:** the in-app Claude API agent from v0.8.0 is gone again, one release
+> later — real usage-based billing, however small, wasn't worth it for a personal app. There's
+> no API key field in Settings any more; instead, ask Claude for recipes wherever you already
+> talk to it and import the file it gives you (Settings → **Import from Claude**). Existing
+> recipes, plan and shopping list are untouched.
+>
+> **Upgrading to v0.8.0:** the recipe bot moved off the NAS and into the app itself, talking to
+> the Claude API directly. Superseded by v0.8.1 above one release later.
+> Recipe search no longer goes through TheMealDB either way; recipes come from Claude now,
+> one way or another.
 >
 > **Upgrading to v0.7.0:** adds the gym side. No existing data moves — the migration only
 > creates new tables.
@@ -60,16 +62,72 @@ any screen (the gear, top right), and that's where the key lives.
 > KO Kitchen once**, then install v0.1.2+. From v0.1.2 on, every build uses one
 > committed key (`app/ko.keystore`) so updates install straight over each other.
 
-## Connect the agent
+## Ask Claude for recipes
 
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com).
-2. Open **Settings** (the gear icon, top right of any screen) and paste it into
-   **Anthropic API key**.
-3. **Test key**.
+KO has no chat screen and calls no AI itself. Instead:
 
-The key is kept in its own store, excluded from both Android's cloud backup and KO's own JSON
-export, so restoring on a new phone asks for it again rather than carrying it around in a file.
-It never leaves the phone except in requests to `api.anthropic.com`.
+1. Ask Claude for what you want — a dish idea, a recipe written down, a pantry or
+   shopping update — wherever you already talk to it (a Claude Code session, claude.ai).
+   Point it at this README if it needs the file shape below.
+2. Ask it to save that as a KO Kitchen import file (the JSON shape below) and get the
+   file onto your phone (e.g. send it to yourself, or save it from a Claude Code session).
+3. In the app, **Settings → Import from Claude**, pick that file.
+
+Importing is additive: it never wipes anything, unlike Settings' full backup restore
+(that one replaces everything from a JSON export — a different feature, for moving to
+a new phone). Editing an existing recipe (by passing its `recipeId`) snapshots it
+first, so it's one tap from **Undo** in the recipe editor's history — same safety net
+a manual edit gets.
+
+### The file shape
+
+A JSON object with any combination of these top-level keys, all optional:
+
+```json
+{
+  "recipes": [
+    {
+      "recipeId": 0,
+      "title": "Chicken Teriyaki",
+      "servings": 2,
+      "prepMinutes": 10,
+      "cookMinutes": 15,
+      "notes": "Freezes well.",
+      "tags": ["quick", "chicken"],
+      "kcalPerServing": 420,
+      "proteinG": 35,
+      "carbsG": 30,
+      "fatG": 14,
+      "macroNote": "Estimated from the ingredient list.",
+      "ingredients": [
+        { "name": "chicken thigh", "amount": "400 g" },
+        { "name": "soy sauce", "amount": "3 tbsp", "optional": false }
+      ],
+      "steps": [
+        { "text": "Marinate the chicken for 10 minutes.", "minutes": 10 },
+        { "text": "Sear and glaze until sticky." }
+      ]
+    }
+  ],
+  "pantryUpdates": [
+    { "name": "onion", "status": "OUT" }
+  ],
+  "shoppingItems": ["flour", "sugar"],
+  "mealPlan": [
+    { "recipeTitle": "Chicken Teriyaki", "date": "2026-09-20", "slot": "DINNER" }
+  ]
+}
+```
+
+- `recipes[].recipeId` — omit or `0` to create a new recipe; an existing id replaces
+  that recipe (title, ingredients, steps and all — send the whole thing, not a diff).
+- `pantryUpdates[].name` matches an existing pantry item case-insensitively, or creates
+  one; `status` is one of `IN_STOCK` / `LOW` / `OUT`.
+- `mealPlan[].recipeTitle` must match a recipe already in the library — either already
+  saved, or in this same file's `recipes` list. `slot` is `BREAKFAST` / `LUNCH` /
+  `DINNER` / `OTHER`.
+
+See `data/repo/AgentImportRepository.kt` for the authoritative shape if this drifts.
 
 ## Build from source
 
@@ -93,9 +151,9 @@ Open the folder in Android Studio and press Run to deploy to a device/emulator.
 
 **App:** Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
 DataStore · OkHttp + kotlinx.serialization · Coil · type-safe Navigation ·
-single-module, manual DI. The recipe agent is the Claude Messages API, called directly
-from the phone with tool use for saving recipes, planning meals and shopping list
-items — see `data/remote/claude/`.
+single-module, manual DI. No network calls to any AI provider — recipes and pantry
+updates arrive as a JSON file, applied additively by
+`data/repo/AgentImportRepository.kt`.
 CI in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds the APK and
 attaches it to every `v*` tag.

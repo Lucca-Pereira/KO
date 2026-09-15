@@ -4,17 +4,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,39 +20,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.BuildConfig
 import com.lucca.ko.ui.common.KoTopBar
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)) {
-    val apiKey by vm.apiKey.collectAsStateWithLifecycle()
-    val test by vm.test.collectAsStateWithLifecycle()
+    val agentImport by vm.agentImport.collectAsStateWithLifecycle()
     val backup by vm.backup.collectAsStateWithLifecycle()
 
-    var keyText by remember { mutableStateOf(apiKey) }
-    var keyVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(apiKey) { if (keyText.isBlank()) keyText = apiKey }
-
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
+
+    val agentImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { vm.importAgentFile(context.contentResolver, it) } }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -111,59 +102,43 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Recipe agent", style = MaterialTheme.typography.titleMedium)
+            Text("Ask Claude for recipes", style = MaterialTheme.typography.titleMedium)
             Text(
-                "KO talks to Claude directly using your own Anthropic API key — nothing runs " +
-                    "on your own hardware, and the key never leaves this field except to " +
-                    "reach api.anthropic.com.",
+                "KO doesn't call any AI itself — no API key, no billing. Instead, ask Claude " +
+                    "for a recipe, a pantry update, or a shopping list addition wherever you " +
+                    "already talk to it (a Claude Code session, claude.ai). Ask it to write a " +
+                    "KO Kitchen import file, save that file to your phone, then import it here. " +
+                    "Editing an existing recipe this way is undoable, same as a manual edit.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            OutlinedTextField(
-                value = keyText,
-                onValueChange = { keyText = it; vm.setApiKey(it) },
-                label = { Text("Anthropic API key") },
-                placeholder = { Text("sk-ant-…") },
-                singleLine = true,
-                visualTransformation = if (keyVisible) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    IconButton(onClick = { keyVisible = !keyVisible }) {
-                        Icon(
-                            if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = if (keyVisible) "Hide key" else "Show key",
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedButton(
-                    onClick = { vm.testApiKey(keyText) },
-                    enabled = keyText.isNotBlank() && test != TestState.Running,
-                ) { Text("Test key") }
-                when (val t = test) {
-                    is TestState.Running -> CircularProgressIndicator(Modifier.padding(4.dp))
-                    is TestState.Ok -> Text(
-                        t.message,
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall,
+            Button(
+                onClick = {
+                    agentImportLauncher.launch(
+                        arrayOf("application/json", "application/octet-stream", "text/plain"),
                     )
-                    is TestState.Failed -> Text(
-                        t.message,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    TestState.Idle -> {}
+                },
+                enabled = agentImport != AgentImportState.Working,
+            ) { Text("Import from Claude") }
+            when (val a = agentImport) {
+                AgentImportState.Working -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.padding(4.dp))
+                    Text("Importing…", style = MaterialTheme.typography.bodySmall)
                 }
+                is AgentImportState.Done -> Text(
+                    a.message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is AgentImportState.Failed -> Text(
+                    a.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                AgentImportState.Idle -> {}
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -192,7 +167,7 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
             }
             when (val b = backup) {
                 BackupState.Working -> Row(
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CircularProgressIndicator(Modifier.padding(4.dp))
@@ -219,7 +194,8 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "Recipes are found and written by Claude, using your own API key.",
+                "Recipes are found and written by Claude — ask it directly, nothing in this " +
+                    "app talks to it for you.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

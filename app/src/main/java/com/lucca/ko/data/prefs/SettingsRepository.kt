@@ -13,9 +13,9 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 /**
  * One-shot data-repair flags, read and written by `data/repair/StartupRepairs.kt`.
  *
- * This used to also hold the NAS brain's URL and suggestion count; both went with the brain
- * itself — the recipe agent talks to the Claude API directly (see [SecretsRepository] for its
- * key) and has no per-request count setting to remember.
+ * This used to also hold the NAS brain's URL and suggestion count, and later an Anthropic API
+ * key — both gone now. The app doesn't call any AI itself; recipes and pantry updates come in as
+ * a file via `data/repo/AgentImportRepository.kt` instead.
  */
 class SettingsRepository(private val context: Context) {
 

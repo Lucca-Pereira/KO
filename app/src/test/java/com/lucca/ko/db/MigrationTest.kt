@@ -8,6 +8,7 @@ import com.lucca.ko.data.db.MIGRATION_2_3
 import com.lucca.ko.data.db.MIGRATION_3_4
 import com.lucca.ko.data.db.MIGRATION_4_5
 import com.lucca.ko.data.db.MIGRATION_5_6
+import com.lucca.ko.data.db.MIGRATION_6_7
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -400,6 +401,41 @@ class MigrationTest {
             assertEquals(2, db.count("SELECT COUNT(*) FROM dishes"))
             assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
             assertEquals(0, db.count("SELECT COUNT(*) FROM agent_messages"))
+        }
+    }
+
+    // ---- 6 -> 7: the in-app agent (and its chat table) is gone --------------------
+
+    @Test
+    fun migrate6To7_validatesAgainstTheEntities() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+    }
+
+    @Test
+    fun migrate6To7_dropsAgentMessagesButKeepsRevisionsAndTheKitchen() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).use { db ->
+            db.execSQL(
+                "INSERT INTO agent_messages (sessionKey, role, content, createdAt) " +
+                    "VALUES ('general', 'USER', 'what can I cook?', 1)",
+            )
+            db.execSQL(
+                "INSERT INTO recipe_revisions (dishId, createdAt, reason, snapshot) " +
+                    "VALUES (3, 1, 'manual edit', '{}')",
+            )
+        }
+
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).use { db ->
+            assertEquals(1, db.count("SELECT COUNT(*) FROM recipe_revisions"))
+            assertEquals(3, db.count("SELECT COUNT(*) FROM pantry_items"))
+            assertEquals(2, db.count("SELECT COUNT(*) FROM dishes"))
+            assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
+            val threw = runCatching { db.query("SELECT * FROM agent_messages").close() }.isFailure
+            assertTrue("agent_messages should be dropped", threw)
         }
     }
 }

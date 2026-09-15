@@ -5,27 +5,13 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.BackupRepository
-import com.lucca.ko.data.prefs.SecretsRepository
-import com.lucca.ko.data.remote.claude.ClaudeClient
-import com.lucca.ko.data.remote.claude.textMessage
+import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-sealed interface TestState {
-    data object Idle : TestState
-
-    data object Running : TestState
-
-    data class Ok(val message: String) : TestState
-
-    data class Failed(val message: String) : TestState
-}
 
 sealed interface BackupState {
     data object Idle : BackupState
@@ -37,29 +23,57 @@ sealed interface BackupState {
     data class Failed(val message: String) : BackupState
 }
 
+sealed interface AgentImportState {
+    data object Idle : AgentImportState
+
+    data object Working : AgentImportState
+
+    data class Done(val message: String) : AgentImportState
+
+    data class Failed(val message: String) : AgentImportState
+}
+
 class SettingsViewModel(
-    private val claude: ClaudeClient,
-    private val secretsRepo: SecretsRepository,
+    private val agentImportRepo: AgentImportRepository,
     private val backupRepo: BackupRepository,
 ) : ViewModel() {
 
-    val apiKey = secretsRepo.apiKey
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    private val _agentImport = MutableStateFlow<AgentImportState>(AgentImportState.Idle)
+    val agentImport = _agentImport.asStateFlow()
 
-    private val _test = MutableStateFlow<TestState>(TestState.Idle)
-    val test = _test.asStateFlow()
-
-    fun setApiKey(value: String) = viewModelScope.launch { secretsRepo.setApiKey(value) }
-
-    /** Sends the smallest possible request, just to confirm the key is accepted. */
-    fun testApiKey(key: String) = viewModelScope.launch {
-        _test.value = TestState.Running
-        runCatching { secretsRepo.setApiKey(key) }
+    fun importAgentFile(resolver: ContentResolver, uri: Uri) = viewModelScope.launch {
+        _agentImport.value = AgentImportState.Working
         runCatching {
-            claude.send(messages = listOf(textMessage("user", "Say \"hi\" and nothing else.")), maxTokens = 16)
+            val text = withContext(Dispatchers.IO) {
+                resolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                    ?: error("Couldn't open the file.")
+            }
+            agentImportRepo.import(text)
         }
-            .onSuccess { _test.value = TestState.Ok("That key works.") }
-            .onFailure { _test.value = TestState.Failed(it.message ?: "Couldn't reach Claude.") }
+            .onSuccess { summary ->
+                _agentImport.value = if (summary.isEmpty && summary.skipped.isEmpty()) {
+                    AgentImportState.Failed("That file didn't have anything importable in it.")
+                } else {
+                    val parts = buildList {
+                        if (summary.recipesSaved > 0) add("${summary.recipesSaved} recipe(s)")
+                        if (summary.pantryUpdated > 0) add("${summary.pantryUpdated} pantry item(s)")
+                        if (summary.shoppingAdded > 0) add("${summary.shoppingAdded} shopping item(s)")
+                        if (summary.planEntriesAdded > 0) add("${summary.planEntriesAdded} plan entr(y/ies)")
+                    }
+                    val done = if (parts.isEmpty()) "Nothing new." else "Added ${parts.joinToString(", ")}."
+                    val skippedNote = if (summary.skipped.isNotEmpty()) {
+                        " Skipped: ${summary.skipped.joinToString("; ")}"
+                    } else {
+                        ""
+                    }
+                    AgentImportState.Done(done + skippedNote)
+                }
+            }
+            .onFailure { _agentImport.value = AgentImportState.Failed(it.message ?: "Import failed.") }
+    }
+
+    fun clearAgentImportState() {
+        _agentImport.value = AgentImportState.Idle
     }
 
     private val _backup = MutableStateFlow<BackupState>(BackupState.Idle)
@@ -104,8 +118,7 @@ class SettingsViewModel(
     companion object {
         val Factory = koFactory {
             SettingsViewModel(
-                claude = it.claudeClient,
-                secretsRepo = it.secretsRepository,
+                agentImportRepo = it.agentImportRepository,
                 backupRepo = it.backupRepository,
             )
         }
