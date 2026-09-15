@@ -13,24 +13,24 @@ import kotlinx.coroutines.flow.map
 private val Context.secretsStore: DataStore<Preferences> by preferencesDataStore(name = "secrets")
 
 /**
- * The NAS bearer token, kept in its own DataStore file.
+ * The user's own Anthropic API key, kept in its own DataStore file.
  *
  * Separate from [SettingsRepository] so it can be excluded wholesale from both Android's cloud
- * backup and KO's own JSON export. `datastore/` used to be included in the backup rules in one
- * lump, which would have sent the token to Google Drive; and a backup file is something you
- * might email yourself. Restoring onto a new phone asks for the token again, which is correct.
+ * backup and KO's own JSON export — a backup file is something you might email yourself, and an
+ * API key has no business riding along in it. Restoring onto a new phone asks for the key again,
+ * which is correct.
  */
 class SecretsRepository(private val context: Context) {
 
     private object Keys {
-        val nasToken = stringPreferencesKey("nas_token")
+        val anthropicApiKey = stringPreferencesKey("anthropic_api_key")
     }
 
-    val token: Flow<String> = context.secretsStore.data.map { it[Keys.nasToken].orEmpty() }
+    val apiKey: Flow<String> = context.secretsStore.data.map { it[Keys.anthropicApiKey].orEmpty() }
 
-    suspend fun currentToken(): String = token.first()
+    suspend fun currentApiKey(): String = apiKey.first()
 
-    suspend fun setToken(value: String) {
-        context.secretsStore.edit { it[Keys.nasToken] = value.trim() }
+    suspend fun setApiKey(value: String) {
+        context.secretsStore.edit { it[Keys.anthropicApiKey] = value.trim() }
     }
 }

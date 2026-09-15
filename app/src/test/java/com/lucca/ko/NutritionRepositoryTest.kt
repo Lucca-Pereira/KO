@@ -11,9 +11,8 @@ import com.lucca.ko.data.db.LogSource
 import com.lucca.ko.data.db.Supplement
 import com.lucca.ko.data.db.SupplementKind
 import com.lucca.ko.data.prefs.ProfileRepository
-import com.lucca.ko.data.remote.MealDbClient
-import com.lucca.ko.data.remote.nas.NasClient
-import com.lucca.ko.data.remote.nas.NasStatusMonitor
+import com.lucca.ko.data.remote.OpenFoodFactsClient
+import com.lucca.ko.data.remote.claude.ClaudeClient
 import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.RecipeRepository
@@ -21,9 +20,7 @@ import com.lucca.ko.data.repo.SupplementRepository
 import com.lucca.ko.domain.recipe.IngredientDraft
 import com.lucca.ko.domain.recipe.RecipeDraft
 import java.time.LocalDate
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.After
@@ -66,7 +63,9 @@ class NutritionRepositoryTest {
             .build()
 
         val http = OkHttpClient()
-        val nas = NasClient(http, http, { "http://127.0.0.1:1/" }, { "" })
+        // Points nowhere: `lookupBarcode` must fall back to "not found" rather than hang or crash.
+        val off = OpenFoodFactsClient(http, baseUrl = "http://127.0.0.1:1/")
+        val claude = ClaudeClient(http = http, apiKeyProvider = { "" })
         val profileRepo = ProfileRepository(context)
 
         nutrition = NutritionRepository(
@@ -75,8 +74,8 @@ class NutritionRepositoryTest {
             bodyDao = db.bodyDao(),
             recipeDao = db.recipeDao(),
             profileRepo = profileRepo,
-            nas = nas,
-            nasStatus = NasStatusMonitor(nas, CoroutineScope(UnconfinedTestDispatcher())),
+            offClient = off,
+            claude = claude,
         )
         body = BodyRepository(db.bodyDao(), profileRepo)
         supplements = SupplementRepository(db.supplementDao(), db.nutritionDao())
@@ -86,7 +85,6 @@ class NutritionRepositoryTest {
             pantryDao = db.pantryDao(),
             shoppingDao = db.shoppingDao(),
             mealPlanDao = db.mealPlanDao(),
-            mealDb = MealDbClient(http),
         )
     }
 
@@ -348,7 +346,7 @@ class NutritionRepositoryTest {
         )
         nutrition.saveFood(food)
 
-        // The NAS client points at a dead port, so anything returned came from the table.
+        // Open Food Facts points at a dead port, so anything returned came from the table.
         val found = nutrition.lookupBarcode("1234567890123")
         assertNotNull(found)
         assertEquals("Test yoghurt", found!!.name)

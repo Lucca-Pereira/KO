@@ -12,10 +12,12 @@ import com.lucca.ko.data.db.dao.FoodDao
 import com.lucca.ko.data.db.dao.NutritionDao
 import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.prefs.ProfileRepository
-import com.lucca.ko.data.remote.nas.EstimateRequestDto
-import com.lucca.ko.data.remote.nas.NasClient
-import com.lucca.ko.data.remote.nas.NasStatusMonitor
-import com.lucca.ko.data.remote.nas.NutritionIngredientDto
+import com.lucca.ko.data.remote.OpenFoodFactsClient
+import com.lucca.ko.data.remote.claude.ClaudeClient
+import com.lucca.ko.data.remote.claude.ClaudeToolChoice
+import com.lucca.ko.data.remote.claude.firstToolUse
+import com.lucca.ko.data.remote.claude.textMessage
+import com.lucca.ko.data.db.MacroSource
 import com.lucca.ko.domain.IngredientMatcher
 import com.lucca.ko.domain.nutrition.AdaptiveTdee
 import com.lucca.ko.domain.nutrition.DatedValue
@@ -29,6 +31,13 @@ import com.lucca.ko.domain.nutrition.WeightTrend
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import com.lucca.ko.data.remote.claude.ClaudeTool
 
 /** What a recipe's macro estimate came back as. */
 data class RecipeEstimate(
@@ -53,8 +62,8 @@ class NutritionRepository(
     private val bodyDao: BodyDao,
     private val recipeDao: RecipeDao,
     private val profileRepo: ProfileRepository,
-    private val nas: NasClient,
-    private val nasStatus: NasStatusMonitor,
+    private val offClient: OpenFoodFactsClient,
+    private val claude: ClaudeClient,
 ) {
     // ---- Reading ---------------------------------------------------------------------
 
@@ -173,25 +182,21 @@ class NutritionRepository(
     suspend fun deleteFood(id: Long) = foodDao.delete(id)
 
     /**
-     * Looks a barcode up: the local table first, then the brain, then Open Food Facts directly.
+     * Looks a barcode up: the local table first, then Open Food Facts directly.
      *
-     * The direct fallback is the opposite call from the AI features, and for a concrete reason:
-     * the failure case here is standing in a shop with the NAS unreachable, which is exactly
-     * when you need it.
+     * Called straight from the phone rather than through the recipe agent — the failure case
+     * here is standing in a shop with no result, which is exactly when this needs to be fast.
      */
     suspend fun lookupBarcode(barcode: String): FoodItem? {
         foodDao.byBarcode(barcode)?.let { return it }
 
-        val remote = runCatching { nas.foodByBarcode(barcode) }
-            .onFailure { nasStatus.reportUnreachable(it.message ?: "Couldn't reach the brain.") }
-            .getOrNull() ?: return null
-        nasStatus.reportReachable()
+        val remote = runCatching { offClient.byBarcode(barcode) }.getOrNull() ?: return null
 
         val food = FoodItem(
             name = remote.name,
             normalizedName = IngredientMatcher.normalize(remote.name).ifBlank { remote.name.lowercase() },
             brand = remote.brand,
-            barcode = remote.barcode ?: barcode,
+            barcode = barcode,
             source = FoodSource.OFF,
             servingLabel = remote.servingLabel,
             servingGrams = remote.servingGrams,
@@ -203,7 +208,6 @@ class NutritionRepository(
             sugarPer100 = remote.sugarPer100,
             satFatPer100 = remote.satFatPer100,
             sodiumMgPer100 = remote.sodiumMgPer100,
-            isSupplement = remote.isSupplement,
             imageUrl = remote.imageUrl,
         )
         // Cached locally so the next scan of the same packet is instant and works offline.
@@ -213,56 +217,60 @@ class NutritionRepository(
     // ---- Recipe macros -------------------------------------------------------------------
 
     /**
-     * Asks the brain to estimate a recipe's macros, and stores the result on the recipe.
+     * Asks Claude to estimate a recipe's per-serving macros from its ingredients, and stores the
+     * result on the recipe.
      *
-     * The app's own `normalizedName` is sent with every ingredient so both sides key on the same
-     * string — that is what lets the server match against its food table deterministically
-     * rather than asking a model to guess.
+     * Forced to call [MACRO_REPORT_TOOL] rather than asked to answer in prose: reading the number
+     * back out of a tool call's arguments is reliable, where parsing it out of a sentence is not.
      */
     suspend fun estimateRecipe(recipeId: Long): RecipeEstimate? {
         val details = recipeDao.recipeWithDetailsOnce(recipeId) ?: return null
 
+        val ingredientLines = details.orderedIngredients.joinToString("\n") {
+            "- ${listOf(it.measure.orEmpty(), it.rawName).filter(String::isNotBlank).joinToString(" ")}"
+        }
+        val prompt = "Recipe: ${details.recipe.title}\n" +
+            "Servings: ${details.recipe.servings}\n" +
+            "Ingredients:\n$ingredientLines"
+
         val response = runCatching {
-            nas.estimate(
-                EstimateRequestDto(
-                    title = details.recipe.title,
-                    servings = details.recipe.servings,
-                    ingredients = details.orderedIngredients.map {
-                        NutritionIngredientDto(
-                            name = it.rawName,
-                            normalizedName = it.normalizedName,
-                            quantity = it.quantity,
-                            unit = it.unit,
-                            raw = it.measure.orEmpty(),
-                        )
-                    },
-                ),
+            claude.send(
+                messages = listOf(textMessage("user", prompt)),
+                tools = listOf(MACRO_REPORT_TOOL),
+                system = "You estimate recipe nutrition from general knowledge of common " +
+                    "ingredients and portion sizes. Call report_macros exactly once with the " +
+                    "PER-SERVING macros for the whole recipe (i.e. the total divided by its " +
+                    "servings), not the total.",
+                toolChoice = ClaudeToolChoice(type = "tool", name = "report_macros"),
+                maxTokens = 400,
             )
-        }.onFailure {
-            nasStatus.reportUnreachable(it.message ?: "Couldn't reach the brain.")
         }.getOrNull() ?: return null
-        nasStatus.reportReachable()
+
+        val toolUse = response.firstToolUse() ?: return null
+        val report = runCatching {
+            Json { ignoreUnknownKeys = true }.decodeFromString(MacroReport.serializer(), toolUse.input.toString())
+        }.getOrNull() ?: return null
 
         recipeDao.updateRecipe(
             details.recipe.copy(
-                kcalPerServing = response.perServing.kcal,
-                proteinG = response.perServing.proteinG,
-                carbsG = response.perServing.carbsG,
-                fatG = response.perServing.fatG,
-                macroSource = com.lucca.ko.data.db.MacroSource.AI,
+                kcalPerServing = report.kcal,
+                proteinG = report.proteinG,
+                carbsG = report.carbsG,
+                fatG = report.fatG,
+                macroSource = MacroSource.AI,
                 macroUpdatedAt = System.currentTimeMillis(),
-                macroNote = response.note,
+                macroNote = report.note,
                 updatedAt = System.currentTimeMillis(),
             ),
         )
 
         return RecipeEstimate(
-            perServingKcal = response.perServing.kcal,
-            proteinG = response.perServing.proteinG,
-            carbsG = response.perServing.carbsG,
-            fatG = response.perServing.fatG,
-            coverage = response.coverage,
-            note = response.note,
+            perServingKcal = report.kcal,
+            proteinG = report.proteinG,
+            carbsG = report.carbsG,
+            fatG = report.fatG,
+            coverage = 1.0,
+            note = report.note,
         )
     }
 
@@ -364,8 +372,42 @@ class NutritionRepository(
     private companion object {
         /** How far back the adaptive estimate looks. Four weeks is the usual settling time. */
         const val ADAPTIVE_WINDOW_DAYS = 28L
+
+        val MACRO_REPORT_TOOL = ClaudeTool(
+            name = "report_macros",
+            description = "Reports a recipe's estimated per-serving macros.",
+            inputSchema = buildJsonObject {
+                put("type", "object")
+                put(
+                    "properties",
+                    buildJsonObject {
+                        put("kcal", buildJsonObject { put("type", "number") })
+                        put("proteinG", buildJsonObject { put("type", "number") })
+                        put("carbsG", buildJsonObject { put("type", "number") })
+                        put("fatG", buildJsonObject { put("type", "number") })
+                        put(
+                            "note",
+                            buildJsonObject {
+                                put("type", "string")
+                                put("description", "One short sentence on any assumptions made.")
+                            },
+                        )
+                    },
+                )
+                put("required", buildJsonArray { add("kcal"); add("proteinG"); add("carbsG"); add("fatG") })
+            },
+        )
     }
 }
+
+@Serializable
+private data class MacroReport(
+    val kcal: Double,
+    val proteinG: Double,
+    val carbsG: Double,
+    val fatG: Double,
+    val note: String = "",
+)
 
 fun FoodItem.toPer100g(): Per100g = Per100g(
     kcal = kcalPer100,

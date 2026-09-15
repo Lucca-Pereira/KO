@@ -7,6 +7,7 @@ import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.db.MIGRATION_2_3
 import com.lucca.ko.data.db.MIGRATION_3_4
 import com.lucca.ko.data.db.MIGRATION_4_5
+import com.lucca.ko.data.db.MIGRATION_5_6
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -348,6 +349,57 @@ class MigrationTest {
                 )
             }.isFailure
             assertTrue("ticking twice is a correction, not a second scoop", threw)
+        }
+    }
+
+    // ---- 5 -> 6: the chat table generalises to sessions ---------------------------
+
+    @Test
+    fun migrate5To6_validatesAgainstTheEntities() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+    }
+
+    @Test
+    fun migrate5To6_carriesExistingRecipeChatIntoASessionKey() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().use { db ->
+            db.execSQL(
+                "INSERT INTO recipe_chat_messages (id, dishId, role, content, createdAt, " +
+                    "proposalSummary, proposalStatus) " +
+                    "VALUES (1, 3, 'USER', 'can I use sweet potato?', 1, NULL, NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO recipe_chat_messages (id, dishId, role, content, createdAt, " +
+                    "proposalJson, proposalSummary, proposalStatus) " +
+                    "VALUES (2, 3, 'ASSISTANT', 'Sure, here is a version with sweet potato.', 2, " +
+                    "'{\"title\":\"Abuela''s stew\"}', 'Swap potato for sweet potato', 'PENDING')",
+            )
+        }
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).use { db ->
+            assertEquals(2, db.count("SELECT COUNT(*) FROM agent_messages"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM agent_messages WHERE sessionKey <> 'recipe:3'"))
+            assertEquals(
+                "Swap potato for sweet potato",
+                db.text("SELECT proposalSummary FROM agent_messages WHERE id = 2"),
+            )
+            val threw = runCatching {
+                db.query("SELECT * FROM recipe_chat_messages").close()
+            }.isFailure
+            assertTrue("recipe_chat_messages should be dropped", threw)
+        }
+    }
+
+    @Test
+    fun migrate5To6_leavesEverythingElseAlone() {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).use { db ->
+            assertEquals(3, db.count("SELECT COUNT(*) FROM pantry_items"))
+            assertEquals(2, db.count("SELECT COUNT(*) FROM dishes"))
+            assertEquals(3, db.count("SELECT COUNT(*) FROM meal_plan"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM agent_messages"))
         }
     }
 }

@@ -5,14 +5,17 @@ A personal Android app to run your kitchen:
 - **Pantry** – everything you keep at home, products and spices. Each item is
   *In stock*, *Low*, or *Out*. Tap the status pill to cycle it.
 - **Meal plan** – a weekly calendar. Add a meal from your recipe library, by asking
-  the recipe bot, by searching [TheMealDB](https://www.themealdb.com), or by writing
-  one yourself. Tick a meal off as cooked, change its servings, or move it to another day.
+  the agent, or by writing one yourself. Tick a meal off as cooked, change its servings,
+  or move it to another day.
 - **Recipes** – your own library. Recipes are yours to keep: save, favourite, tag and
   search them, and plan the same one on as many days as you like. Every recipe is fully
   editable – photo, servings, times, tags, notes, ingredients and step-by-step method.
-- **Ask about a recipe** – a conversation attached to each one. Swaps, scaling, technique,
-  what to do without an oven. If you ask for a change it comes back as a proposal you review
-  line by line before it is applied, and every applied change can be undone.
+- **The agent** – a conversation, not a search box. Ask what to cook, get a recipe
+  written down, ask about swaps or scaling for one you already have open, or open it
+  from a specific day on the plan. It can save recipes, add them to your plan and add
+  things to your shopping list — but only ever proposes it first. Every proposal comes
+  back as a review you approve line by line before anything is written, and every
+  applied change can be undone.
 - **Gym** – a food diary that knows about your kitchen. Calories and macros against a
   target worked out from your own height, weight and goal, and corrected over time from
   what your weight actually does rather than from a formula. Scan a barcode, search a
@@ -24,9 +27,10 @@ A personal Android app to run your kitchen:
 Ingredients are colour-coded against your pantry: **green** if you have it, **red** if
 you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping list.
 
-The "bot" is **your own hardware** – a small service on your NAS wrapping
-[Ollama](https://ollama.com), no cloud account and no API key. It proposes dish ideas,
-writes recipes, and answers questions about the one you are cooking.
+The agent talks to **the Claude API directly, using your own Anthropic API key** — no
+NAS, no server to run, no Ollama. It finds and writes recipes, answers questions about
+the one you're cooking, and estimates a recipe's macros. Settings is one tap away from
+any screen (the gear, top right), and that's where the key lives.
 
 ## Install
 
@@ -37,12 +41,14 @@ writes recipes, and answers questions about the one you are cooking.
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.8.0:** the recipe bot moves off your NAS and into the app itself — it now
+> talks to the Claude API directly, using your own Anthropic API key, and the old NAS URL and
+> token are gone from Settings along with `server/`. Recipe search no longer goes through
+> TheMealDB either; the agent finds and writes recipes itself. Existing recipes, plan and
+> shopping list are untouched — enter an API key in Settings to pick the agent back up.
+>
 > **Upgrading to v0.7.0:** adds the gym side. No existing data moves — the migration only
 > creates new tables.
->
-> **Upgrading to v0.5.0:** the app now talks to the KO brain service instead of to Ollama
-> directly, so the old server setting does not carry over — it pointed at Ollama's own port.
-> Deploy [`server/`](server/) and set the new URL and token in Settings.
 >
 > **Upgrading to v0.4.0:** the database changes shape on first launch — recipes stop
 > being throwaway attachments to a calendar day and become a library of their own, and
@@ -54,24 +60,16 @@ writes recipes, and answers questions about the one you are cooking.
 > KO Kitchen once**, then install v0.1.2+. From v0.1.2 on, every build uses one
 > committed key (`app/ko.keystore`) so updates install straight over each other.
 
-## Connect the recipe bot
+## Connect the agent
 
-The AI lives in [`server/`](server/) — a small service you run on your NAS. It owns every
-prompt, wraps Ollama, and serves both this app and Claude (over MCP). See
-[`server/README.md`](server/README.md) for the deploy.
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com).
+2. Open **Settings** (the gear icon, top right of any screen) and paste it into
+   **Anthropic API key**.
+3. **Test key**.
 
-Once it is up, in **Settings → Recipe bot**:
-
-1. **Brain URL** — `http://<nas>:8090`. Port 8090, not Ollama's 11434; the app no longer talks
-   to Ollama directly.
-2. **Access token** — the `KO_API_TOKEN` from the server's `.env`.
-3. **Test connection**.
-
-The token is kept in its own store, excluded from both Android's cloud backup and KO's own JSON
+The key is kept in its own store, excluded from both Android's cloud backup and KO's own JSON
 export, so restoring on a new phone asks for it again rather than carrying it around in a file.
-
-If the brain is unreachable a banner says so, once, at the top of every screen — and suggestions
-fall back to matching your pantry against TheMealDB, so the app still does something useful.
+It never leaves the phone except in requests to `api.anthropic.com`.
 
 ## Build from source
 
@@ -94,11 +92,12 @@ Open the folder in Android Studio and press Run to deploy to a device/emulator.
 ## Tech
 
 **App:** Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
-DataStore · OkHttp + kotlinx.serialization (incl. SSE) · Coil · type-safe Navigation ·
-single-module, manual DI.
-**Server:** Python · FastAPI · FastMCP · Ollama. See [`server/`](server/).
+DataStore · OkHttp + kotlinx.serialization · Coil · type-safe Navigation ·
+single-module, manual DI. The recipe agent is the Claude Messages API, called directly
+from the phone with tool use for saving recipes, planning meals and shopping list
+items — see `data/remote/claude/`.
 CI in
-[`.github/workflows/android.yml`](.github/workflows/android.yml) builds the APK and
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds the APK and
 attaches it to every `v*` tag.
 
 ### Signing
@@ -111,4 +110,5 @@ repository secrets.
 
 ## Credits
 
-Recipe content © [TheMealDB](https://www.themealdb.com). Licensed under MIT.
+Barcode lookups use [Open Food Facts](https://world.openfoodfacts.org), a free, open
+database. Recipes are found and written by [Claude](https://www.anthropic.com/claude).

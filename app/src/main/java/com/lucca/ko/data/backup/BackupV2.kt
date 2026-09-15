@@ -228,25 +228,11 @@ data class SupplementLogV2(
     val note: String? = null,
 )
 
-/**
- * Settings carried in a backup.
- *
- * Note what is missing: the NAS bearer token. Secrets live in their own DataStore file and are
- * excluded from both the JSON export and Android's cloud backup — restoring onto a new phone
- * should ask for the token, not carry it around in a file you might email yourself.
- */
-@Serializable
-data class SettingsV2(
-    val nasBaseUrl: String = "",
-    val suggestionCount: Int = 5,
-)
-
 @Serializable
 data class KoBackupV2(
     val schema: Int = 2,
     val app: String = "KO Kitchen",
     val exportedAt: Long = 0,
-    val settings: SettingsV2 = SettingsV2(),
     val pantry: List<PantryItemV2> = emptyList(),
     val recipes: List<RecipeV2> = emptyList(),
     val recipeIngredients: List<RecipeIngredientV2> = emptyList(),

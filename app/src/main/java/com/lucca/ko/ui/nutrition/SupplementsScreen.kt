@@ -24,7 +24,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +42,7 @@ import com.lucca.ko.data.db.SupplementKind
 import com.lucca.ko.data.repo.SupplementRepository
 import com.lucca.ko.data.repo.SupplementStatus
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -102,8 +102,8 @@ fun SupplementsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Supplements") },
+            KoTopBar(
+                title = "Supplements",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

@@ -198,31 +198,32 @@ data class RecipeTag(
 )
 
 /**
- * One message in a recipe's conversation.
+ * One message in a conversation with the recipe agent.
  *
- * An assistant message may carry a [proposalJson] — a whole replacement recipe the model is
- * offering. It is stored as JSON rather than as rows because it is not part of the recipe until
- * accepted, and a rejected proposal should leave nothing behind.
+ * [sessionKey] identifies which conversation this belongs to — `"general"` for an unscoped chat,
+ * `"recipe:<id>"` when opened from a specific recipe, `"plan:<date>:<slot>"` when opened from a
+ * plan slot. Not a foreign key to [Recipe]: a general or plan-scoped conversation has no recipe to
+ * point at, and a recipe-scoped one should survive the recipe being deleted mid-conversation
+ * rather than vanish along with it.
+ *
+ * An assistant message may carry a [proposalJson] — the raw arguments of a tool call the agent
+ * wants to make (save a recipe, add to the plan, add to shopping) — plus [proposalTool] saying
+ * which tool. It is stored as JSON rather than applied immediately because the user reviews it
+ * first; a rejected proposal leaves nothing behind.
  */
 @Entity(
-    tableName = "recipe_chat_messages",
-    foreignKeys = [
-        ForeignKey(
-            entity = Recipe::class,
-            parentColumns = ["id"],
-            childColumns = ["dishId"],
-            onDelete = ForeignKey.CASCADE,
-        ),
-    ],
-    indices = [Index("dishId")],
+    tableName = "agent_messages",
+    indices = [Index("sessionKey")],
 )
-data class RecipeChatMessage(
+data class AgentMessage(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val dishId: Long,
+    val sessionKey: String,
     val role: ChatRole,
     val content: String,
     val createdAt: Long = System.currentTimeMillis(),
-    /** A serialized replacement recipe, when the model offered one. */
+    /** Which tool the agent wants to call, when this message proposes an action. */
+    val proposalTool: String? = null,
+    /** That tool call's raw arguments, as JSON. */
     val proposalJson: String? = null,
     val proposalSummary: String? = null,
     val proposalStatus: ProposalStatus? = null,

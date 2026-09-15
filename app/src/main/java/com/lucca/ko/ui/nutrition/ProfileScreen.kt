@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +42,7 @@ import com.lucca.ko.domain.nutrition.EnergyCalculator
 import com.lucca.ko.domain.nutrition.Goal
 import com.lucca.ko.domain.nutrition.Sex
 import com.lucca.ko.domain.nutrition.UserProfile
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,8 +118,8 @@ fun ProfileScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Your details") },
+            KoTopBar(
+                title = "Your details",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

@@ -9,7 +9,6 @@ import com.lucca.ko.data.backup.MealPlanEntryV2
 import com.lucca.ko.data.backup.PantryItemV2
 import com.lucca.ko.data.backup.RecipeIngredientV2
 import com.lucca.ko.data.backup.RecipeV2
-import com.lucca.ko.data.backup.SettingsV2
 import com.lucca.ko.data.backup.ShoppingListItemV2
 import com.lucca.ko.data.db.RecipeSource
 import com.lucca.ko.domain.IngredientMatcher
@@ -44,10 +43,6 @@ object BackupUpgrade {
 
         return KoBackupV2(
             exportedAt = v1.exportedAt,
-            // Deliberately not carrying v1's Ollama URL forward: it points at Ollama's own
-            // port, which is not where the brain service lives, so restoring it would hand the
-            // user a broken configuration that looks deliberate. Only the count survives.
-            settings = SettingsV2(suggestionCount = v1.settings.suggestionCount),
             pantry = v1.pantry.map {
                 PantryItemV2(
                     id = it.id,

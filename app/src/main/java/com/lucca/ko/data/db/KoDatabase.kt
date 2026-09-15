@@ -66,7 +66,7 @@ class Converters {
         RecipeTag::class,
         MealPlanEntry::class,
         ShoppingListItem::class,
-        RecipeChatMessage::class,
+        AgentMessage::class,
         RecipeRevision::class,
         FoodItem::class,
         NutritionEntry::class,
@@ -75,7 +75,7 @@ class Converters {
         Supplement::class,
         SupplementLog::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

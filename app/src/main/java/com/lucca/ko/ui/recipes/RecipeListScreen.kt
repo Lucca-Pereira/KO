@@ -18,9 +18,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,7 +33,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +47,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.relations.RecipeWithDetails
 import com.lucca.ko.data.images.RecipeImages
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.common.RecipeMetaLine
 import com.lucca.ko.ui.common.RecipeThumbnail
@@ -57,9 +57,8 @@ import com.lucca.ko.ui.common.RecipeThumbnail
 fun RecipeListScreen(
     onOpenRecipe: (Long) -> Unit,
     onNewRecipe: () -> Unit,
-    onSearchMealDb: () -> Unit,
+    onAskAgent: () -> Unit,
     onFindDuplicates: () -> Unit,
-    onOpenSettings: () -> Unit,
     vm: RecipeListViewModel = viewModel(factory = RecipeListViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -67,9 +66,12 @@ fun RecipeListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Recipes") },
+            KoTopBar(
+                title = "Recipes",
                 actions = {
+                    IconButton(onClick = onAskAgent) {
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Ask the agent")
+                    }
                     IconButton(onClick = vm::toggleFavouritesOnly) {
                         Icon(
                             if (state.favouritesOnly) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -90,19 +92,9 @@ fun RecipeListScreen(
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Search TheMealDB") },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                            onClick = { menuOpen = false; onSearchMealDb() },
-                        )
-                        DropdownMenuItem(
                             text = { Text("Find duplicates") },
                             leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                             onClick = { menuOpen = false; onFindDuplicates() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                            onClick = { menuOpen = false; onOpenSettings() },
                         )
                     }
                 },
@@ -158,7 +150,7 @@ fun RecipeListScreen(
 
                 state.recipes.isEmpty() -> EmptyState(
                     title = "No recipes yet",
-                    subtitle = "Add one by hand with +, or search TheMealDB from the menu. " +
+                    subtitle = "Add one by hand with +, or ask the agent for ideas. " +
                         "Recipes you save stay here, ready to plan on any day.",
                 )
 

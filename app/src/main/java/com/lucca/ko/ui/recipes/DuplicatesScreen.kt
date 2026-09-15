@@ -20,7 +20,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.repo.DuplicateGroup
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.koFactory
 import java.time.Instant
@@ -100,8 +100,8 @@ fun DuplicatesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Find duplicates") },
+            KoTopBar(
+                title = "Find duplicates",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

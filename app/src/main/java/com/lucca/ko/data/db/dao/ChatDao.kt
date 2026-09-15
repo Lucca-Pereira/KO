@@ -4,33 +4,30 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
-import com.lucca.ko.data.db.RecipeChatMessage
+import com.lucca.ko.data.db.AgentMessage
 import com.lucca.ko.data.db.RecipeRevision
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatDao {
 
-    @Query("SELECT * FROM recipe_chat_messages WHERE dishId = :dishId ORDER BY createdAt, id")
-    fun observeMessages(dishId: Long): Flow<List<RecipeChatMessage>>
+    @Query("SELECT * FROM agent_messages WHERE sessionKey = :sessionKey ORDER BY createdAt, id")
+    fun observeMessages(sessionKey: String): Flow<List<AgentMessage>>
 
-    @Query("SELECT * FROM recipe_chat_messages WHERE dishId = :dishId ORDER BY createdAt, id")
-    suspend fun messagesFor(dishId: Long): List<RecipeChatMessage>
+    @Query("SELECT * FROM agent_messages WHERE sessionKey = :sessionKey ORDER BY createdAt, id")
+    suspend fun messagesFor(sessionKey: String): List<AgentMessage>
 
-    @Query("SELECT * FROM recipe_chat_messages WHERE id = :id")
-    suspend fun messageById(id: Long): RecipeChatMessage?
+    @Query("SELECT * FROM agent_messages WHERE id = :id")
+    suspend fun messageById(id: Long): AgentMessage?
 
     @Insert
-    suspend fun insertMessage(message: RecipeChatMessage): Long
+    suspend fun insertMessage(message: AgentMessage): Long
 
     @Update
-    suspend fun updateMessage(message: RecipeChatMessage)
+    suspend fun updateMessage(message: AgentMessage)
 
-    @Query("DELETE FROM recipe_chat_messages WHERE id = :id")
-    suspend fun deleteMessage(id: Long)
-
-    @Query("DELETE FROM recipe_chat_messages WHERE dishId = :dishId")
-    suspend fun clearChat(dishId: Long)
+    @Query("DELETE FROM agent_messages WHERE sessionKey = :sessionKey")
+    suspend fun clearChat(sessionKey: String)
 
     // ---- Revisions -------------------------------------------------------------------
 

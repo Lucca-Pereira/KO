@@ -29,7 +29,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +47,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.lucca.ko.data.images.RecipeImages
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import java.io.File
 
@@ -96,8 +96,8 @@ fun RecipeEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (state.isNew) "New recipe" else "Edit recipe") },
+            KoTopBar(
+                title = if (state.isNew) "New recipe" else "Edit recipe",
                 navigationIcon = {
                     IconButton(onClick = { confirmDiscard = true }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

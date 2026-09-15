@@ -5,8 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import com.lucca.ko.data.repo.RecipeChatRepository
 import com.lucca.ko.data.repo.RecipeRepository
+import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.domain.recipe.IngredientDraft
 import com.lucca.ko.domain.recipe.RecipeDraft
 import com.lucca.ko.domain.recipe.StepDraft
@@ -33,7 +33,7 @@ data class RecipeEditUiState(
 
 class RecipeEditViewModel(
     private val recipes: RecipeRepository,
-    private val chat: RecipeChatRepository,
+    private val revisions: RevisionRepository,
     private val recipeId: Long,
 ) : ViewModel() {
 
@@ -155,7 +155,7 @@ class RecipeEditViewModel(
                 // same safety net an accepted AI edit gets.
                 if (!draft.isNew) {
                     recipes.observeRecipe(draft.id).first()?.let {
-                        chat.snapshot(draft.id, it, reason = "manual edit")
+                        revisions.snapshot(draft.id, it, reason = "manual edit")
                     }
                 }
                 recipes.saveDraft(draft)
@@ -173,7 +173,7 @@ class RecipeEditViewModel(
         val Factory = koFactory { container ->
             RecipeEditViewModel(
                 recipes = container.recipeRepository,
-                chat = container.recipeChatRepository,
+                revisions = container.revisionRepository,
                 recipeId = createSavedStateHandle().recipeId(),
             )
         }

@@ -23,7 +23,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,8 +48,8 @@ fun ShoppingScreen(vm: ShoppingViewModel = viewModel(factory = ShoppingViewModel
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Shopping list") },
+            KoTopBar(
+                title = "Shopping list",
                 actions = {
                     if (state.checked.isNotEmpty()) {
                         TextButton(onClick = vm::clearChecked) { Text("Clear checked") }

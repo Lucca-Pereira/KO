@@ -3,16 +3,12 @@ package com.lucca.ko.ui.nutrition
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.FoodItem
 import com.lucca.ko.data.db.LogSlot
 import com.lucca.ko.data.repo.NutritionRepository
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -38,7 +35,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun NutritionHubScreen(
     onOpenProfile: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenSupplements: () -> Unit,
     onNewFood: () -> Unit,
     logVm: LogActionsViewModel = viewModel(factory = LogActionsViewModel.Factory),
@@ -68,13 +64,10 @@ fun NutritionHubScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Nutrition") },
+            KoTopBar(
+                title = "Nutrition",
                 actions = {
-                    IconButton(onClick = onOpenSupplements) { Text("Supps") }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                    }
+                    TextButton(onClick = onOpenSupplements) { Text("Supps") }
                 },
             )
         },

@@ -19,7 +19,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +38,7 @@ import androidx.navigation.toRoute
 import com.lucca.ko.data.db.FoodItem
 import com.lucca.ko.data.db.FoodSource
 import com.lucca.ko.data.repo.NutritionRepository
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.koFactory
 import com.lucca.ko.ui.nav.FoodEditRoute
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -119,8 +119,8 @@ fun FoodEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (food.id > 0) "Edit food" else "New food") },
+            KoTopBar(
+                title = if (food.id > 0) "Edit food" else "New food",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

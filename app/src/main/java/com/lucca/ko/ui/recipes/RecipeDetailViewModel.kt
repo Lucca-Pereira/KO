@@ -123,14 +123,14 @@ class RecipeDetailViewModel(
         planCount.value = recipes.planCountFor(recipeId)
     }
 
-    /** Asks the brain for this recipe's macros and stores them on it. */
+    /** Asks Claude for this recipe's macros and stores them on it. */
     fun estimateMacros() = viewModelScope.launch {
         _estimating.value = true
         val result = nutrition.estimateRecipe(recipeId)
         _estimating.value = false
         _message.value = when {
-            result == null -> "Couldn't reach the brain to work out the macros."
-            result.coverage < 0.999 -> result.note
+            result == null -> "Couldn't reach Claude — check your API key in Settings."
+            result.note.isNotBlank() -> result.note
             else -> "Macros updated."
         }
     }

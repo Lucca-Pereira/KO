@@ -8,9 +8,6 @@ import com.lucca.ko.data.db.Recipe
 import com.lucca.ko.data.db.RecipeSource
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.db.PantryItem
-import com.lucca.ko.data.remote.MealDbClient
-import com.lucca.ko.data.remote.MealDbIngredient
-import com.lucca.ko.data.remote.MealDetail
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.domain.recipe.IngredientDraft
@@ -19,7 +16,6 @@ import com.lucca.ko.domain.recipe.StepDraft
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -34,9 +30,9 @@ import org.robolectric.annotation.Config
 /**
  * Repository behaviour against a real in-memory SQLite database rather than fake DAOs.
  *
- * The things worth verifying here *are* database behaviours — `ON DELETE SET NULL`, the unique
- * index on `mealdbId`, wholesale ingredient replacement — and a fake DAO would only test the
- * fake. Room's in-memory builder under Robolectric costs a few milliseconds per test.
+ * The things worth verifying here *are* database behaviours — `ON DELETE SET NULL`, wholesale
+ * ingredient replacement — and a fake DAO would only test the fake. Room's in-memory builder
+ * under Robolectric costs a few milliseconds per test.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -59,7 +55,6 @@ class RecipeRepositoryTest {
             pantryDao = db.pantryDao(),
             shoppingDao = db.shoppingDao(),
             mealPlanDao = db.mealPlanDao(),
-            mealDb = MealDbClient(OkHttpClient()),
         )
         plan = MealPlanRepository(db.mealPlanDao(), db.recipeDao())
     }
@@ -67,60 +62,18 @@ class RecipeRepositoryTest {
     @After
     fun tearDown() = db.close()
 
-    private fun detail(id: String, title: String) = MealDetail(
-        id = id,
-        title = title,
-        category = null,
-        area = null,
-        instructions = "Mix it. Cook it. Eat it.",
-        thumbUrl = null,
-        sourceUrl = "https://example.com/$id",
-        youtubeUrl = null,
-        ingredients = listOf(
-            MealDbIngredient("chicken", "2 lbs"),
-            MealDbIngredient("soy sauce", "1/2 cup"),
+    /** A two-ingredient recipe, standing in for whatever the agent might have saved. */
+    private suspend fun seedTeriyaki(title: String = "Teriyaki"): Long = recipes.saveDraft(
+        RecipeDraft(
+            title = title,
+            source = RecipeSource.AI,
+            ingredients = listOf(
+                IngredientDraft(key = -1, name = "chicken", amount = "2 lbs"),
+                IngredientDraft(key = -2, name = "soy sauce", amount = "1/2 cup"),
+            ),
+            steps = listOf(StepDraft(key = -3, text = "Mix it. Cook it. Eat it.")),
         ),
     )
-
-    // ---- Library ---------------------------------------------------------------------
-
-    @Test
-    fun `importing the same meal twice reuses the recipe`() = runTest {
-        val first = recipes.importFromMealDb(detail("52772", "Teriyaki"))
-        val second = recipes.importFromMealDb(detail("52772", "Teriyaki"))
-
-        assertEquals(first, second)
-        assertEquals(1, db.recipeDao().getAllRecipes().size)
-        // And it does not duplicate the ingredients either.
-        assertEquals(2, db.recipeDao().ingredientsFor(first).size)
-    }
-
-    @Test
-    fun `re-importing does not overwrite edits`() = runTest {
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
-        recipes.saveDraft(
-            RecipeDraft(
-                id = id,
-                title = "My better teriyaki",
-                mealdbId = "52772",
-                ingredients = listOf(IngredientDraft(key = -1, name = "chicken thigh")),
-            ),
-        )
-
-        recipes.importFromMealDb(detail("52772", "Teriyaki"))
-
-        assertEquals("My better teriyaki", recipes.recipeById(id)?.title)
-        assertEquals(listOf("chicken thigh"), db.recipeDao().ingredientsFor(id).map { it.rawName })
-    }
-
-    @Test
-    fun `import parses the measures it is given`() = runTest {
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
-        val soy = db.recipeDao().ingredientsFor(id).first { it.rawName == "soy sauce" }
-        assertEquals(0.5, soy.quantity)
-        assertEquals("cup", soy.unit)
-        assertEquals("1/2 cup", soy.measure)
-    }
 
     // ---- Editing ---------------------------------------------------------------------
 
@@ -218,7 +171,7 @@ class RecipeRepositoryTest {
 
     @Test
     fun `one recipe can be planned on many days`() = runTest {
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
+        val id = seedTeriyaki()
         plan.addToPlan(id, LocalDate.parse("2026-09-14"), MealSlot.DINNER)
         plan.addToPlan(id, LocalDate.parse("2026-09-16"), MealSlot.LUNCH)
         plan.addToPlan(id, LocalDate.parse("2026-09-18"), MealSlot.DINNER)
@@ -230,7 +183,7 @@ class RecipeRepositoryTest {
 
     @Test
     fun `removing a planned meal leaves the recipe alone`() = runTest {
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
+        val id = seedTeriyaki()
         val entryId = plan.addToPlan(id, LocalDate.parse("2026-09-14"), MealSlot.DINNER)
 
         plan.removePlanEntry(entryId)
@@ -290,7 +243,7 @@ class RecipeRepositoryTest {
         db.pantryDao().upsert(
             PantryItem(name = "Chicken", normalizedName = "chicken", status = StockStatus.IN_STOCK),
         )
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
+        val id = seedTeriyaki()
 
         recipes.addMissingIngredientsToShopping(id)
 
@@ -300,7 +253,7 @@ class RecipeRepositoryTest {
 
     @Test
     fun `marking an unknown ingredient as run out teaches the pantry and links it`() = runTest {
-        val id = recipes.importFromMealDb(detail("52772", "Teriyaki"))
+        val id = seedTeriyaki()
         val chicken = db.recipeDao().ingredientsFor(id).first { it.rawName == "chicken" }
 
         recipes.markIngredientRanOut(chicken.id)
@@ -316,9 +269,9 @@ class RecipeRepositoryTest {
 
     @Test
     fun `a recipe row carries its source`() = runTest {
-        val imported = recipes.importFromMealDb(detail("52772", "Teriyaki"))
+        val fromAgent = seedTeriyaki()
         val manual = recipes.saveDraft(RecipeDraft(title = "Mine"))
-        assertEquals(RecipeSource.MEALDB, recipes.recipeById(imported)?.source)
+        assertEquals(RecipeSource.AI, recipes.recipeById(fromAgent)?.source)
         assertEquals(RecipeSource.MANUAL, recipes.recipeById(manual)?.source)
     }
 

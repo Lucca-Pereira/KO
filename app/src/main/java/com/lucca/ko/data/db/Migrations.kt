@@ -383,5 +383,52 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/**
+ * v5 -> v6: the recipe bot moves off the NAS and into an in-app agent, and its chat table
+ * generalises from "attached to one recipe" to "attached to a session".
+ *
+ * `recipe_chat_messages` only ever supported one shape of conversation, keyed by `dishId`. The
+ * agent now also holds unscoped conversations ("what can I cook tonight?") and plan-slot ones,
+ * neither of which has a recipe to key on, so the table is replaced by `agent_messages` keyed on a
+ * free-text `sessionKey`. Existing rows are carried forward as `"recipe:<dishId>"` rather than
+ * dropped — a conversation someone was mid-way through is still worth keeping.
+ *
+ * `recipe_revisions` (the undo stack) is untouched: it stays keyed on `dishId`, because undoing an
+ * edit is inherently about one specific recipe regardless of which kind of conversation proposed
+ * the edit.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS agent_messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                sessionKey      TEXT    NOT NULL,
+                role            TEXT    NOT NULL,
+                content         TEXT    NOT NULL,
+                createdAt       INTEGER NOT NULL,
+                proposalTool    TEXT,
+                proposalJson    TEXT,
+                proposalSummary TEXT,
+                proposalStatus  TEXT
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_messages_sessionKey ON agent_messages (sessionKey)")
+
+        db.execSQL(
+            """
+            INSERT INTO agent_messages
+                (id, sessionKey, role, content, createdAt, proposalJson, proposalSummary, proposalStatus)
+            SELECT id, 'recipe:' || dishId, role, content, createdAt, proposalJson, proposalSummary, proposalStatus
+            FROM recipe_chat_messages
+            """.trimIndent(),
+        )
+
+        db.execSQL("DROP TABLE recipe_chat_messages")
+    }
+}
+
 /** Every migration the database knows about, in order. */
-val KO_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+val KO_MIGRATIONS =
+    arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)

@@ -14,9 +14,6 @@ import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.db.dao.ShoppingDao
 import com.lucca.ko.data.db.dao.TagDao
 import com.lucca.ko.data.db.relations.RecipeWithDetails
-import com.lucca.ko.data.remote.MealDbClient
-import com.lucca.ko.data.remote.MealDetail
-import com.lucca.ko.data.remote.MealSummary
 import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
@@ -44,7 +41,6 @@ class RecipeRepository(
     private val pantryDao: PantryDao,
     private val shoppingDao: ShoppingDao,
     private val mealPlanDao: MealPlanDao,
-    private val mealDb: MealDbClient,
 ) {
     fun observeRecipe(id: Long): Flow<RecipeWithDetails?> = recipeDao.observeRecipe(id)
 
@@ -56,38 +52,6 @@ class RecipeRepository(
     suspend fun recipeById(id: Long): Recipe? = recipeDao.recipeById(id)
 
     // ---- Creating ------------------------------------------------------------------
-
-    /**
-     * Imports a MealDB meal into the library, reusing the existing recipe if it is already
-     * there. Deliberately does not overwrite: re-adding a meal you have since edited must not
-     * wipe your edits.
-     */
-    suspend fun importFromMealDb(detail: MealDetail): Long {
-        recipeDao.byMealdbId(detail.id)?.let { return it.id }
-
-        val recipe = Recipe(
-            title = detail.title,
-            sourceUrl = detail.bestLink(),
-            imageUrl = detail.thumbUrl,
-            mealdbId = detail.id,
-            instructions = detail.instructions,
-            source = RecipeSource.MEALDB,
-        )
-        val ingredients = detail.ingredients.map { line ->
-            val parsed = MeasureParser.parse(line.measure)
-            RecipeIngredient(
-                dishId = 0,
-                rawName = line.name,
-                normalizedName = IngredientMatcher.normalize(line.name),
-                measure = line.measure?.ifBlank { null },
-                quantity = parsed?.quantity,
-                unit = parsed?.unit,
-            )
-        }
-        val id = recipeDao.insertRecipeWithIngredients(recipe, ingredients)
-        refreshSearchBlob(id)
-        return id
-    }
 
     /** Creates an empty recipe for the editor to fill in. Returns its id. */
     suspend fun createBlankRecipe(title: String = ""): Long {
@@ -341,11 +305,4 @@ class RecipeRepository(
             shoppingDao.deleteUncheckedByNormalized(item.normalizedName)
         }
     }
-
-    // ---- TheMealDB search ----------------------------------------------------------
-
-    suspend fun searchMeals(query: String): List<MealSummary> =
-        if (query.isBlank()) emptyList() else mealDb.searchByName(query)
-
-    suspend fun mealDetail(id: String): MealDetail? = mealDb.lookup(id)
 }

@@ -42,7 +42,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +66,7 @@ import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.ResolvedIngredient
 import com.lucca.ko.ui.common.Dot
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.common.RecipeMetaLine
 import com.lucca.ko.ui.common.availabilityColor
@@ -159,8 +159,8 @@ fun RecipeDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
-            TopAppBar(
-                title = { Text(recipe?.title ?: "Recipe", maxLines = 1) },
+            KoTopBar(
+                title = recipe?.title ?: "Recipe",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -493,13 +493,7 @@ private fun PlanTargetSheet(
     }
 }
 
-/**
- * Per-serving macros, or an offer to work them out.
- *
- * The estimate is table-first on the server: ingredients it recognises are looked up and only the
- * rest are guessed by a model, which is why the note under the number says how much of the recipe
- * was actually accounted for. A calorie figure with no provenance is worse than none.
- */
+/** Per-serving macros, or an offer to work them out — Claude's best estimate from the ingredients. */
 @Composable
 private fun NutritionCard(
     kcal: Double?,

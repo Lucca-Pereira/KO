@@ -6,26 +6,25 @@ import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SecretsRepository
 import com.lucca.ko.data.prefs.SettingsRepository
-import com.lucca.ko.data.remote.MealDbClient
-import com.lucca.ko.data.remote.nas.NasClient
-import com.lucca.ko.data.remote.nas.NasStatusMonitor
+import com.lucca.ko.data.remote.OpenFoodFactsClient
+import com.lucca.ko.data.remote.claude.ClaudeClient
+import com.lucca.ko.data.remote.claude.KitchenTools
 import com.lucca.ko.data.repair.StartupRepairs
-import com.lucca.ko.data.seed.FoodSeedLoader
+import com.lucca.ko.data.repo.AgentRepository
 import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.PantryRepository
-import com.lucca.ko.data.repo.RecipeChatRepository
 import com.lucca.ko.data.repo.RecipeRepository
+import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
-import com.lucca.ko.data.repo.SuggestionRepository
 import com.lucca.ko.data.repo.SupplementRepository
+import com.lucca.ko.data.seed.FoodSeedLoader
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CoroutineScope
 import okhttp3.OkHttpClient
 
 /** Manual dependency container held by [KoApp] — no DI framework needed. */
-class AppContainer(context: Context, private val appScope: CoroutineScope) {
+class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
 
@@ -38,41 +37,17 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
             .build()
     }
 
-    /**
-     * A second client for server-sent events.
-     *
-     * The shared client's 90-second `callTimeout` severs a connection after 90 seconds no matter
-     * how healthy it is, and its 60-second read timeout kills it during any pause the model
-     * takes while thinking — both fatal for a stream that legitimately runs for minutes.
-     * `newBuilder()` shares the connection pool and dispatcher, so this costs almost nothing.
-     */
-    private val streamingHttpClient: OkHttpClient by lazy {
-        httpClient.newBuilder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .callTimeout(0, TimeUnit.MILLISECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .pingInterval(20, TimeUnit.SECONDS)
-            .build()
-    }
-
     private val database: KoDatabase by lazy { KoDatabase.get(appContext) }
-
-    private val mealDb: MealDbClient by lazy { MealDbClient(httpClient) }
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
 
     val secretsRepository: SecretsRepository by lazy { SecretsRepository(appContext) }
 
-    val nasClient: NasClient by lazy {
-        NasClient(
-            http = httpClient,
-            streamingHttp = streamingHttpClient,
-            baseUrlProvider = { settingsRepository.currentSettings().nasBaseUrl },
-            tokenProvider = { secretsRepository.currentToken() },
-        )
+    val claudeClient: ClaudeClient by lazy {
+        ClaudeClient(http = httpClient, apiKeyProvider = { secretsRepository.currentApiKey() })
     }
 
-    val nasStatus: NasStatusMonitor by lazy { NasStatusMonitor(nasClient, appScope) }
+    private val openFoodFactsClient: OpenFoodFactsClient by lazy { OpenFoodFactsClient(httpClient) }
 
     val pantryRepository: PantryRepository by lazy {
         PantryRepository(database.pantryDao(), database.shoppingDao())
@@ -82,6 +57,8 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
         ShoppingRepository(database.shoppingDao(), database.pantryDao())
     }
 
+    val revisionRepository: RevisionRepository by lazy { RevisionRepository(database.chatDao()) }
+
     val recipeRepository: RecipeRepository by lazy {
         RecipeRepository(
             recipeDao = database.recipeDao(),
@@ -89,18 +66,6 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
             pantryDao = database.pantryDao(),
             shoppingDao = database.shoppingDao(),
             mealPlanDao = database.mealPlanDao(),
-            mealDb = mealDb,
-        )
-    }
-
-    val recipeChatRepository: RecipeChatRepository by lazy {
-        RecipeChatRepository(
-            chatDao = database.chatDao(),
-            recipeDao = database.recipeDao(),
-            pantryDao = database.pantryDao(),
-            recipes = recipeRepository,
-            nas = nasClient,
-            nasStatus = nasStatus,
         )
     }
 
@@ -108,15 +73,18 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
         MealPlanRepository(database.mealPlanDao(), database.recipeDao())
     }
 
-    val suggestionRepository: SuggestionRepository by lazy {
-        SuggestionRepository(
-            pantryDao = database.pantryDao(),
-            recipeDao = database.recipeDao(),
-            mealDb = mealDb,
-            nas = nasClient,
-            nasStatus = nasStatus,
-            settings = settingsRepository,
+    private val kitchenTools: KitchenTools by lazy {
+        KitchenTools(
+            pantryRepository = pantryRepository,
+            recipeRepository = recipeRepository,
+            mealPlanRepository = mealPlanRepository,
+            shoppingRepository = shoppingRepository,
+            revisionRepository = revisionRepository,
         )
+    }
+
+    val agentRepository: AgentRepository by lazy {
+        AgentRepository(chatDao = database.chatDao(), claude = claudeClient, tools = kitchenTools)
     }
 
     val profileRepository: ProfileRepository by lazy { ProfileRepository(appContext) }
@@ -128,8 +96,8 @@ class AppContainer(context: Context, private val appScope: CoroutineScope) {
             bodyDao = database.bodyDao(),
             recipeDao = database.recipeDao(),
             profileRepo = profileRepository,
-            nas = nasClient,
-            nasStatus = nasStatus,
+            offClient = openFoodFactsClient,
+            claude = claudeClient,
         )
     }
 

@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -35,7 +34,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -54,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.relations.PlannedRecipe
+import com.lucca.ko.ui.common.KoTopBar
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -62,11 +61,9 @@ import java.time.ZoneId
 @Composable
 fun PlanScreen(
     onPickFromLibrary: (String, String) -> Unit,
-    onAddSuggested: (String, String) -> Unit,
-    onSearchMeal: (String, String) -> Unit,
+    onAskAgent: (String, String) -> Unit,
     onNewRecipe: (String, String) -> Unit,
     onOpenRecipe: (Long) -> Unit,
-    onOpenSettings: () -> Unit,
     vm: PlanViewModel = viewModel(factory = PlanViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -76,13 +73,10 @@ fun PlanScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Meal plan") },
+            KoTopBar(
+                title = "Meal plan",
                 actions = {
                     if (!state.isCurrentWeek) TextButton(onClick = vm::goToday) { Text("Today") }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                    }
                 },
             )
         },
@@ -152,13 +146,9 @@ fun PlanScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("From my recipes") }
                 OutlinedButton(
-                    onClick = { onAddSuggested(target.toString(), slot.name); addFor = null },
+                    onClick = { onAskAgent(target.toString(), slot.name); addFor = null },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Ask the recipe bot") }
-                OutlinedButton(
-                    onClick = { onSearchMeal(target.toString(), slot.name); addFor = null },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Search TheMealDB") }
+                ) { Text("Ask the agent") }
                 OutlinedButton(
                     onClick = { onNewRecipe(target.toString(), slot.name); addFor = null },
                     modifier = Modifier.fillMaxWidth(),

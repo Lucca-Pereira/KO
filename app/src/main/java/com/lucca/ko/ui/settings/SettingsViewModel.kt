@@ -5,11 +5,9 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.BackupRepository
-import com.lucca.ko.data.prefs.AppSettings
 import com.lucca.ko.data.prefs.SecretsRepository
-import com.lucca.ko.data.prefs.SettingsRepository
-import com.lucca.ko.data.remote.nas.NasStatusMonitor
-import com.lucca.ko.data.repo.SuggestionRepository
+import com.lucca.ko.data.remote.claude.ClaudeClient
+import com.lucca.ko.data.remote.claude.textMessage
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,64 +37,29 @@ sealed interface BackupState {
     data class Failed(val message: String) : BackupState
 }
 
-sealed interface TranslateState {
-    data object Idle : TranslateState
-
-    data object Running : TranslateState
-
-    data class Done(val message: String) : TranslateState
-
-    data class Failed(val message: String) : TranslateState
-}
-
 class SettingsViewModel(
-    private val suggestions: SuggestionRepository,
-    private val settingsRepo: SettingsRepository,
+    private val claude: ClaudeClient,
     private val secretsRepo: SecretsRepository,
     private val backupRepo: BackupRepository,
-    private val nasStatus: NasStatusMonitor,
 ) : ViewModel() {
 
-    val settings = settingsRepo.settings
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
-
-    val token = secretsRepo.token
+    val apiKey = secretsRepo.apiKey
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     private val _test = MutableStateFlow<TestState>(TestState.Idle)
     val test = _test.asStateFlow()
 
-    fun setBaseUrl(value: String) = viewModelScope.launch { settingsRepo.update(baseUrl = value) }
+    fun setApiKey(value: String) = viewModelScope.launch { secretsRepo.setApiKey(value) }
 
-    fun setToken(value: String) = viewModelScope.launch { secretsRepo.setToken(value) }
-
-    fun setCount(value: Int) = viewModelScope.launch { settingsRepo.update(count = value) }
-
-    fun testConnection(baseUrl: String) = viewModelScope.launch {
+    /** Sends the smallest possible request, just to confirm the key is accepted. */
+    fun testApiKey(key: String) = viewModelScope.launch {
         _test.value = TestState.Running
-        suggestions.testConnection(baseUrl)
-            .onSuccess {
-                _test.value = TestState.Ok(it)
-                nasStatus.refreshNow()
-            }
-            .onFailure { _test.value = TestState.Failed(it.message ?: "Connection failed") }
-    }
-
-    private val _translate = MutableStateFlow<TranslateState>(TranslateState.Idle)
-    val translate = _translate.asStateFlow()
-
-    fun translatePantry() = viewModelScope.launch {
-        _translate.value = TranslateState.Running
-        runCatching { suggestions.translatePantryToEnglish() }
-            .onSuccess { n ->
-                _translate.value = when {
-                    n > 0 -> TranslateState.Done("Translated $n pantry item(s) for recipe search.")
-                    else -> TranslateState.Done("Nothing needed changing.")
-                }
-            }
-            .onFailure {
-                _translate.value = TranslateState.Failed(it.message ?: "Translation failed.")
-            }
+        runCatching { secretsRepo.setApiKey(key) }
+        runCatching {
+            claude.send(messages = listOf(textMessage("user", "Say \"hi\" and nothing else.")), maxTokens = 16)
+        }
+            .onSuccess { _test.value = TestState.Ok("That key works.") }
+            .onFailure { _test.value = TestState.Failed(it.message ?: "Couldn't reach Claude.") }
     }
 
     private val _backup = MutableStateFlow<BackupState>(BackupState.Idle)
@@ -119,22 +82,14 @@ class SettingsViewModel(
             .onFailure { _backup.value = BackupState.Failed(it.message ?: "Export failed.") }
     }
 
-    /**
-     * @param restoreSettings off by default — restoring an old backup should not silently reset
-     *   the server configuration you fixed last week.
-     */
-    fun importFrom(
-        resolver: ContentResolver,
-        uri: Uri,
-        restoreSettings: Boolean = false,
-    ) = viewModelScope.launch {
+    fun importFrom(resolver: ContentResolver, uri: Uri) = viewModelScope.launch {
         _backup.value = BackupState.Working
         runCatching {
             val text = withContext(Dispatchers.IO) {
                 resolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
                     ?: error("Couldn't open the file.")
             }
-            backupRepo.importJson(text, restoreSettings = restoreSettings)
+            backupRepo.importJson(text)
         }
             .onSuccess {
                 _backup.value = BackupState.Done(
@@ -149,11 +104,9 @@ class SettingsViewModel(
     companion object {
         val Factory = koFactory {
             SettingsViewModel(
-                suggestions = it.suggestionRepository,
-                settingsRepo = it.settingsRepository,
+                claude = it.claudeClient,
                 secretsRepo = it.secretsRepository,
                 backupRepo = it.backupRepository,
-                nasStatus = it.nasStatus,
             )
         }
     }

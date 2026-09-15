@@ -4,7 +4,7 @@
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <include domain="file" path="datastore/" />
-        <!-- The NAS bearer token. Never goes to the cloud. -->
+        <!-- The Anthropic API key. Never goes to the cloud. -->
         <exclude domain="file" path="datastore/secrets.preferences_pb" />
     </cloud-backup>
     <device-transfer>

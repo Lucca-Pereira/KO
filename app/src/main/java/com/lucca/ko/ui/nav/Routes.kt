@@ -32,15 +32,19 @@ import kotlinx.serialization.Serializable
 /** [recipeId] `0L` creates a new recipe. */
 @Serializable data class RecipeEditRoute(val recipeId: Long = 0L)
 
-@Serializable data class RecipeChatRoute(val recipeId: Long)
-
 /** Pick an existing library recipe to plan on [date] / [slot]. */
 @Serializable data class RecipePickerRoute(val date: String, val slot: String)
 
-/** A blank [date] means "save to the library only", with nothing added to the plan. */
-@Serializable data class MealSearchRoute(val date: String = "", val slot: String = "")
-
-@Serializable data class SuggestRoute(val date: String = "", val slot: String = "")
+/**
+ * The recipe agent conversation. Unscoped when every field is at its default (the general
+ * "what can I cook?" chat); [recipeId] scopes it to one recipe ("ask about this recipe"); a
+ * non-blank [date] scopes it to a plan slot ("ask the agent" from that day).
+ */
+@Serializable data class AgentChatRoute(
+    val recipeId: Long = 0L,
+    val date: String = "",
+    val slot: String = "",
+)
 
 // ---- Nutrition ----------------------------------------------------------------------
 

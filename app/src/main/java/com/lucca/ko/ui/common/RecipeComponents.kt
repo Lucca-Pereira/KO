@@ -1,17 +1,10 @@
 package com.lucca.ko.ui.common
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,32 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.lucca.ko.data.remote.MealSummary
-
-/**
- * A TheMealDB search hit. Lives here because the suggestion and search screens both show one and
- * had drifted into two near-identical private copies.
- */
-@Composable
-fun MealRow(
-    meal: MealSummary,
-    saving: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clickable(enabled = !saving, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        RecipeThumbnail(model = meal.thumbUrl, size = 56)
-        Text(meal.title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        if (saving) CircularProgressIndicator(Modifier.size(20.dp))
-    }
-}
 
 /**
  * A square recipe image, falling back to a placeholder rather than an empty hole — most manual

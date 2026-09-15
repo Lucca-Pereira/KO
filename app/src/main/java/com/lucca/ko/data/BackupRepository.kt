@@ -3,7 +3,6 @@ package com.lucca.ko.data
 import androidx.room.withTransaction
 import com.lucca.ko.data.backup.KoBackupV1
 import com.lucca.ko.data.backup.KoBackupV2
-import com.lucca.ko.data.backup.SettingsV2
 import com.lucca.ko.data.backup.toEntity
 import com.lucca.ko.data.backup.toV2
 import com.lucca.ko.data.db.KoDatabase
@@ -11,7 +10,6 @@ import com.lucca.ko.data.prefs.SettingsRepository
 import com.lucca.ko.domain.IngredientMatcher
 import com.lucca.ko.domain.backup.BackupUpgrade
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -45,13 +43,8 @@ class BackupRepository(
     }
 
     suspend fun exportJson(): String {
-        val cfg = settings.settings.first()
         val backup = KoBackupV2(
             exportedAt = System.currentTimeMillis(),
-            settings = SettingsV2(
-                nasBaseUrl = cfg.nasBaseUrl,
-                suggestionCount = cfg.suggestionCount,
-            ),
             pantry = db.pantryDao().getAll().map { it.toV2() },
             recipes = db.recipeDao().getAllRecipes().map { it.toV2() },
             recipeIngredients = db.recipeDao().getAllIngredients().map { it.toV2() },
@@ -72,12 +65,7 @@ class BackupRepository(
         return json.encodeToString(KoBackupV2.serializer(), backup)
     }
 
-    /**
-     * @param restoreSettings whether to overwrite the live server configuration from the file.
-     *   Off by default: restoring a six-month-old backup should not silently reset the server
-     *   URL you fixed last week.
-     */
-    suspend fun importJson(text: String, restoreSettings: Boolean = false): ImportSummary {
+    suspend fun importJson(text: String): ImportSummary {
         val backup = parse(text)
 
         // Recompute normalized names with the current rules. A v1 file has already had this done
@@ -113,12 +101,6 @@ class BackupRepository(
         // clearAllTables() took the bundled foods with everything else; FoodSeedLoader puts them
         // back on next launch, since its guard is "are there any read-only rows".
         // Search blobs are not in the file; let StartupRepairs rebuild them on next launch.
-        if (restoreSettings) {
-            settings.update(
-                baseUrl = backup.settings.nasBaseUrl,
-                count = backup.settings.suggestionCount,
-            )
-        }
 
         return ImportSummary(
             pantry = backup.pantry.size,

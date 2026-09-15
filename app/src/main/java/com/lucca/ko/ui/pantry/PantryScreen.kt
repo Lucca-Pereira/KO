@@ -30,7 +30,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +53,7 @@ import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.ui.common.EmptyState
+import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.SectionHeader
 import com.lucca.ko.ui.common.StatusPill
 import com.lucca.ko.ui.common.label
@@ -67,7 +67,7 @@ fun PantryScreen(vm: PantryViewModel = viewModel(factory = PantryViewModel.Facto
     var showEditor by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Pantry (${state.total})") }) },
+        topBar = { KoTopBar(title = "Pantry (${state.total})") },
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = null; showEditor = true }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add item")
