@@ -14,6 +14,12 @@ A personal Android app to run your kitchen:
   talk to it, and import the small file it gives you from **Settings**. Editing an
   existing recipe this way is undoable, same as a manual edit. See
   [Ask Claude for recipes](#ask-claude-for-recipes) below for the exact file shape.
+- **NAS sync (optional)** – if you run the small `server/` service on your own NAS, the
+  app syncs with it automatically on foreground: Claude Desktop can add recipes and
+  pantry updates directly over MCP, no file to carry over. See
+  [Live sync with your own NAS](#live-sync-with-your-own-nas) below. The file-import
+  workflow above still works with or without this — it's the fallback for whenever the
+  NAS is unreachable, or if you never set one up at all.
 - **Gym** – a food diary that knows about your kitchen. Calories and macros against a
   target worked out from your own height, weight and goal, and corrected over time from
   what your weight actually does rather than from a formula. Scan a barcode, search a
@@ -25,9 +31,10 @@ A personal Android app to run your kitchen:
 Ingredients are colour-coded against your pantry: **green** if you have it, **red** if
 you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping list.
 
-KO doesn't call any AI itself — no API key, no billing, no server to run. Recipes and
-pantry updates come from asking Claude directly and importing what it gives you.
-Settings is one tap away from any screen (the gear, top right).
+KO doesn't call any AI itself — no API key, no billing baked into the app. Recipes and
+pantry updates come from asking Claude directly, either importing a file it writes or,
+if you've set up the optional NAS sync, straight from a Claude Desktop chat. Settings is
+one tap away from any screen (the gear, top right).
 
 ## Install
 
@@ -38,6 +45,11 @@ Settings is one tap away from any screen (the gear, top right).
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.9.0:** adds optional live sync with a NAS-hosted service (see
+> [Live sync with your own NAS](#live-sync-with-your-own-nas)) — entirely opt-in, nothing
+> changes if you don't set a NAS URL in Settings. The database migration only adds new
+> columns; existing recipes, pantry, plan and shopping list are untouched.
+>
 > **Upgrading to v0.8.1:** the in-app Claude API agent from v0.8.0 is gone again, one release
 > later — real usage-based billing, however small, wasn't worth it for a personal app. There's
 > no API key field in Settings any more; instead, ask Claude for recipes wherever you already
@@ -129,6 +141,25 @@ A JSON object with any combination of these top-level keys, all optional:
 
 See `data/repo/AgentImportRepository.kt` for the authoritative shape if this drifts.
 
+## Live sync with your own NAS
+
+Optional, and off by default. If you run the `server/` service (see `server/README.md`
+if present, or `server/docker-compose.yml`) on a NAS or box you control, KO can sync
+with it directly instead of the file-import dance above:
+
+1. Deploy `server/` — it needs Docker and a `KO_API_TOKEN` set in `server/.env`. It binds
+   to the host's Tailscale address on purpose, so only your own devices can reach it.
+2. In the app, **Settings → NAS sync**, enter the NAS's URL (e.g. `http://100.x.x.x:8090`)
+   and the same token. Tap **Sync now**, or just open the app — it syncs automatically on
+   every foreground.
+3. Point Claude Desktop's MCP config at `http://<that-url>/mcp` with the same bearer
+   token, and it can add recipes, update the pantry, and add shopping/plan entries
+   directly — no file, no import step. It cannot delete anything; that stays phone-only.
+
+Both syncing and the file-import workflow above use the same underlying merge logic
+(`data/repo/RecipeMerge.kt`, `data/repo/SyncRepository.kt`), so they're safe to use
+interchangeably — sync when the NAS is reachable, a file when it isn't.
+
 ## Build from source
 
 Requires JDK 17 and the Android SDK (Android Studio Koala or newer).
@@ -152,8 +183,9 @@ Open the folder in Android Studio and press Run to deploy to a device/emulator.
 **App:** Kotlin · Jetpack Compose · Room (with real migrations and exported schemas) ·
 DataStore · OkHttp + kotlinx.serialization · Coil · type-safe Navigation ·
 single-module, manual DI. No network calls to any AI provider — recipes and pantry
-updates arrive as a JSON file, applied additively by
-`data/repo/AgentImportRepository.kt`.
+updates arrive as a JSON file (`data/repo/AgentImportRepository.kt`) or, optionally, a
+sync round trip with your own NAS (`data/repo/SyncRepository.kt`), both applied
+additively.
 CI in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds the APK and
 attaches it to every `v*` tag.
