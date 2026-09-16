@@ -29,6 +29,29 @@ abstract class RecipeDao {
     @Query("SELECT * FROM dishes WHERE mealdbId = :mealdbId LIMIT 1")
     abstract suspend fun byMealdbId(mealdbId: String): Recipe?
 
+    @Query("SELECT * FROM dishes WHERE remoteId = :remoteId LIMIT 1")
+    abstract suspend fun byRemoteId(remoteId: String): Recipe?
+
+    /** Never pushed, or edited since its last successful push. */
+    @Query("SELECT * FROM dishes WHERE syncedAt IS NULL OR updatedAt > syncedAt")
+    abstract suspend fun pendingPush(): List<Recipe>
+
+    @Query("UPDATE dishes SET syncedAt = :syncedAt WHERE id = :id")
+    abstract suspend fun stampSynced(id: Long, syncedAt: Long)
+
+    /** Backfills a remoteId onto a row that predates sync existing at all (migrated in as NULL). */
+    @Query("UPDATE dishes SET remoteId = :remoteId WHERE id = :id")
+    abstract suspend fun setRemoteId(id: Long, remoteId: String)
+
+    /**
+     * Used only when applying a sync pull: an incoming row is authoritative about its own
+     * remoteId/updatedAt, unlike [saveDraft][com.lucca.ko.data.repo.RecipeRepository.saveDraft]
+     * (which always stamps `updatedAt = now()` for a normal save) — without this, a pulled recipe
+     * would look locally-edited again the moment it lands, and re-push on the very next sync.
+     */
+    @Query("UPDATE dishes SET remoteId = :remoteId, updatedAt = :updatedAt, syncedAt = :syncedAt WHERE id = :id")
+    abstract suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long)
+
     @Query("DELETE FROM dishes WHERE id = :id")
     abstract suspend fun deleteRecipe(id: Long)
 

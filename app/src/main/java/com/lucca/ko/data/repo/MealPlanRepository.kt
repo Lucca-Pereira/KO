@@ -6,6 +6,7 @@ import com.lucca.ko.data.db.dao.MealPlanDao
 import com.lucca.ko.data.db.dao.RecipeDao
 import com.lucca.ko.data.db.relations.PlannedRecipe
 import java.time.LocalDate
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -36,6 +37,7 @@ class MealPlanRepository(
                 dishId = recipeId,
                 titleSnapshot = recipe?.title.orEmpty(),
                 servings = servings,
+                remoteId = UUID.randomUUID().toString(),
             ),
         )
     }
@@ -60,4 +62,19 @@ class MealPlanRepository(
     /** Called after a rename so the snapshots the plan falls back on stay accurate. */
     suspend fun refreshTitleSnapshots(recipeId: Long, title: String) =
         mealPlanDao.refreshTitleSnapshots(recipeId, title)
+
+    // ---- Sync ------------------------------------------------------------------------
+
+    suspend fun planByRemoteId(remoteId: String): MealPlanEntry? = mealPlanDao.byRemoteId(remoteId)
+
+    suspend fun pendingSyncPush(): List<MealPlanEntry> = mealPlanDao.pendingPush()
+
+    suspend fun insertFromSync(entry: MealPlanEntry): Long = mealPlanDao.insert(entry)
+
+    suspend fun stampSynced(id: Long, syncedAt: Long) = mealPlanDao.stampSynced(id, syncedAt)
+
+    suspend fun stampSync(id: Long, remoteId: String, syncedAt: Long) =
+        mealPlanDao.stampSync(id, remoteId, syncedAt)
+
+    suspend fun setRemoteId(id: Long, remoteId: String) = mealPlanDao.setRemoteId(id, remoteId)
 }

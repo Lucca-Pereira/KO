@@ -6,4 +6,7 @@
     <!-- The Anthropic API key lives here. `datastore/` above would otherwise sweep it up and
          send it to Google Drive. Restoring on a new phone asks for it again, which is right. -->
     <exclude domain="file" path="datastore/secrets.preferences_pb" />
+    <!-- The NAS bearer token. Same reasoning: re-enter it on a new phone rather than ship it
+         off in a cloud backup. -->
+    <exclude domain="file" path="datastore/sync_settings.preferences_pb" />
 </full-backup-content>

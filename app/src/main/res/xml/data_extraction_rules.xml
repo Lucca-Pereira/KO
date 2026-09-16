@@ -6,6 +6,8 @@
         <include domain="file" path="datastore/" />
         <!-- The Anthropic API key. Never goes to the cloud. -->
         <exclude domain="file" path="datastore/secrets.preferences_pb" />
+        <!-- The NAS bearer token. Never goes to the cloud either. -->
+        <exclude domain="file" path="datastore/sync_settings.preferences_pb" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="." />
@@ -13,5 +15,6 @@
         <include domain="file" path="datastore/" />
         <!-- Excluded here too: a device transfer is still a copy of the secret off the phone. -->
         <exclude domain="file" path="datastore/secrets.preferences_pb" />
+        <exclude domain="file" path="datastore/sync_settings.preferences_pb" />
     </device-transfer>
 </data-extraction-rules>

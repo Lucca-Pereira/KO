@@ -24,6 +24,22 @@ interface MealPlanDao {
     @Query("SELECT COUNT(*) FROM meal_plan WHERE dishId = :dishId")
     suspend fun countForRecipe(dishId: Long): Int
 
+    @Query("SELECT * FROM meal_plan WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun byRemoteId(remoteId: String): MealPlanEntry?
+
+    /** Plan entries only ever push once, as new rows — no edit-sync, so no updatedAt to check. */
+    @Query("SELECT * FROM meal_plan WHERE syncedAt IS NULL")
+    suspend fun pendingPush(): List<MealPlanEntry>
+
+    @Query("UPDATE meal_plan SET syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSynced(id: Long, syncedAt: Long)
+
+    @Query("UPDATE meal_plan SET remoteId = :remoteId, syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSync(id: Long, remoteId: String, syncedAt: Long)
+
+    @Query("UPDATE meal_plan SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Insert
     suspend fun insert(entry: MealPlanEntry): Long
 

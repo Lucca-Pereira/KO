@@ -41,6 +41,10 @@ data class PantryItemV2(
     val note: String? = null,
     val searchName: String? = null,
     val updatedAt: Long = 0,
+    // Both default null, so a backup written before sync existed still imports — the next sync
+    // just treats the restored row as never-pushed, same as the migration does for old rows.
+    val remoteId: String? = null,
+    val syncedAt: Long? = null,
 )
 
 @Serializable
@@ -70,6 +74,8 @@ data class RecipeV2(
     val macroSource: MacroSource? = null,
     val macroUpdatedAt: Long? = null,
     val macroNote: String? = null,
+    val remoteId: String? = null,
+    val syncedAt: Long? = null,
 )
 
 @Serializable
@@ -114,6 +120,8 @@ data class MealPlanEntryV2(
     val note: String? = null,
     val cooked: Boolean = false,
     val sortOrder: Int = 0,
+    val remoteId: String? = null,
+    val syncedAt: Long? = null,
 )
 
 @Serializable
@@ -125,6 +133,8 @@ data class ShoppingListItemV2(
     val pantryItemId: Long? = null,
     val checked: Boolean = false,
     val addedAt: Long = 0,
+    val remoteId: String? = null,
+    val syncedAt: Long? = null,
 )
 
 @Serializable
@@ -253,11 +263,11 @@ data class KoBackupV2(
 // ---- Entity <-> DTO -----------------------------------------------------------------
 
 fun PantryItem.toV2() = PantryItemV2(
-    id, name, normalizedName, category, status, quantity, note, searchName, updatedAt,
+    id, name, normalizedName, category, status, quantity, note, searchName, updatedAt, remoteId, syncedAt,
 )
 
 fun PantryItemV2.toEntity() = PantryItem(
-    id, name, normalizedName, category, status, quantity, note, searchName, updatedAt,
+    id, name, normalizedName, category, status, quantity, note, searchName, updatedAt, remoteId, syncedAt,
 )
 
 fun Recipe.toV2() = RecipeV2(
@@ -268,6 +278,7 @@ fun Recipe.toV2() = RecipeV2(
     timesCooked = timesCooked, source = source, forkedFromId = forkedFromId,
     kcalPerServing = kcalPerServing, proteinG = proteinG, carbsG = carbsG, fatG = fatG,
     macroSource = macroSource, macroUpdatedAt = macroUpdatedAt, macroNote = macroNote,
+    remoteId = remoteId, syncedAt = syncedAt,
 )
 
 fun RecipeV2.toEntity() = Recipe(
@@ -278,6 +289,7 @@ fun RecipeV2.toEntity() = Recipe(
     timesCooked = timesCooked, source = source, forkedFromId = forkedFromId,
     kcalPerServing = kcalPerServing, proteinG = proteinG, carbsG = carbsG, fatG = fatG,
     macroSource = macroSource, macroUpdatedAt = macroUpdatedAt, macroNote = macroNote,
+    remoteId = remoteId, syncedAt = syncedAt,
     // Rebuilt on import from the restored title / ingredients / tags.
     searchBlob = null,
 )
@@ -301,17 +313,21 @@ fun TagV2.toEntity() = Tag(id, name, normalizedName)
 fun RecipeTag.toV2() = RecipeTagV2(dishId, tagId)
 fun RecipeTagV2.toEntity() = RecipeTag(dishId, tagId)
 
-fun MealPlanEntry.toV2() =
-    MealPlanEntryV2(id, date, slot, dishId, titleSnapshot, servings, note, cooked, sortOrder)
+fun MealPlanEntry.toV2() = MealPlanEntryV2(
+    id, date, slot, dishId, titleSnapshot, servings, note, cooked, sortOrder, remoteId, syncedAt,
+)
 
-fun MealPlanEntryV2.toEntity() =
-    MealPlanEntry(id, date, slot, dishId, titleSnapshot, servings, note, cooked, sortOrder)
+fun MealPlanEntryV2.toEntity() = MealPlanEntry(
+    id, date, slot, dishId, titleSnapshot, servings, note, cooked, sortOrder, remoteId, syncedAt,
+)
 
-fun ShoppingListItem.toV2() =
-    ShoppingListItemV2(id, name, normalizedName, category, pantryItemId, checked, addedAt)
+fun ShoppingListItem.toV2() = ShoppingListItemV2(
+    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt,
+)
 
-fun ShoppingListItemV2.toEntity() =
-    ShoppingListItem(id, name, normalizedName, category, pantryItemId, checked, addedAt)
+fun ShoppingListItemV2.toEntity() = ShoppingListItem(
+    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt,
+)
 
 fun FoodItem.toV2() = FoodItemV2(
     id, name, normalizedName, brand, barcode, source, readOnly, servingLabel, servingGrams,

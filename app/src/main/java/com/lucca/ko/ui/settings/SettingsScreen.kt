@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,32 +16,48 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.BuildConfig
 import com.lucca.ko.ui.common.KoTopBar
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)) {
     val agentImport by vm.agentImport.collectAsStateWithLifecycle()
     val backup by vm.backup.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val savedNasUrl by vm.nasUrl.collectAsStateWithLifecycle()
+    val savedNasToken by vm.nasToken.collectAsStateWithLifecycle()
+    val lastSyncedAt by vm.lastSyncedAt.collectAsStateWithLifecycle()
+
+    var nasUrlField by remember { mutableStateOf("") }
+    var nasTokenField by remember { mutableStateOf("") }
+    LaunchedEffect(savedNasUrl) { nasUrlField = savedNasUrl.orEmpty() }
+    LaunchedEffect(savedNasToken) { nasTokenField = savedNasToken.orEmpty() }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -139,6 +156,73 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
                     style = MaterialTheme.typography.bodySmall,
                 )
                 AgentImportState.Idle -> {}
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            Text("NAS sync", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "If you're running the KO sync service on your own NAS, point the app at it here " +
+                    "and Claude Desktop can add recipes and pantry updates directly — no file to " +
+                    "carry over. Syncs automatically when you open the app, or tap Sync now.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = nasUrlField,
+                onValueChange = { nasUrlField = it },
+                label = { Text("NAS URL") },
+                placeholder = { Text("http://100.x.x.x:8090") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = nasTokenField,
+                onValueChange = { nasTokenField = it },
+                label = { Text("Token") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = {
+                        vm.setNasUrl(nasUrlField)
+                        vm.setNasToken(nasTokenField)
+                        vm.syncNow()
+                    },
+                    enabled = sync != SyncState.Working,
+                ) { Text("Sync now") }
+            }
+            Text(
+                if (lastSyncedAt > 0) {
+                    "Last synced ${DateFormat.getDateTimeInstance().format(Date(lastSyncedAt))}"
+                } else {
+                    "Never synced"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when (val s = sync) {
+                SyncState.Working -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.padding(4.dp))
+                    Text("Syncing…", style = MaterialTheme.typography.bodySmall)
+                }
+                is SyncState.Done -> Text(
+                    s.message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is SyncState.Failed -> Text(
+                    s.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                SyncState.Idle -> {}
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))

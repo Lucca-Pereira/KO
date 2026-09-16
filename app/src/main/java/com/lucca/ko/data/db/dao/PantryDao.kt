@@ -21,6 +21,23 @@ interface PantryDao {
     @Query("SELECT * FROM pantry_items WHERE normalizedName = :normalized LIMIT 1")
     suspend fun byNormalized(normalized: String): PantryItem?
 
+    @Query("SELECT * FROM pantry_items WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun byRemoteId(remoteId: String): PantryItem?
+
+    /** Never pushed, or edited since its last successful push. */
+    @Query("SELECT * FROM pantry_items WHERE syncedAt IS NULL OR updatedAt > syncedAt")
+    suspend fun pendingPush(): List<PantryItem>
+
+    @Query("UPDATE pantry_items SET syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSynced(id: Long, syncedAt: Long)
+
+    @Query("UPDATE pantry_items SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
+    /** Applying a sync pull: the incoming row is authoritative about its own remoteId/updatedAt. */
+    @Query("UPDATE pantry_items SET remoteId = :remoteId, updatedAt = :updatedAt, syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long)
+
     @Upsert
     suspend fun upsert(item: PantryItem): Long
 

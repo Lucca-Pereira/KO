@@ -5,11 +5,16 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.BackupRepository
+import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.repo.AgentImportRepository
+import com.lucca.ko.data.repo.SyncOutcome
+import com.lucca.ko.data.repo.SyncRepository
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -33,9 +38,21 @@ sealed interface AgentImportState {
     data class Failed(val message: String) : AgentImportState
 }
 
+sealed interface SyncState {
+    data object Idle : SyncState
+
+    data object Working : SyncState
+
+    data class Done(val message: String) : SyncState
+
+    data class Failed(val message: String) : SyncState
+}
+
 class SettingsViewModel(
     private val agentImportRepo: AgentImportRepository,
     private val backupRepo: BackupRepository,
+    private val syncSettingsRepo: SyncSettingsRepository,
+    private val syncRepo: SyncRepository,
 ) : ViewModel() {
 
     private val _agentImport = MutableStateFlow<AgentImportState>(AgentImportState.Idle)
@@ -115,11 +132,40 @@ class SettingsViewModel(
             .onFailure { _backup.value = BackupState.Failed(it.message ?: "Import failed.") }
     }
 
+    val nasUrl = syncSettingsRepo.nasUrl.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val nasToken = syncSettingsRepo.token.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val lastSyncedAt = syncSettingsRepo.lastSyncedAt.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    private val _sync = MutableStateFlow<SyncState>(SyncState.Idle)
+    val sync = _sync.asStateFlow()
+
+    fun setNasUrl(url: String) = viewModelScope.launch { syncSettingsRepo.setNasUrl(url) }
+
+    fun setNasToken(token: String) = viewModelScope.launch { syncSettingsRepo.setToken(token) }
+
+    fun syncNow() = viewModelScope.launch {
+        _sync.value = SyncState.Working
+        _sync.value = when (val outcome = syncRepo.sync()) {
+            SyncOutcome.NotConfigured -> SyncState.Failed("Set a NAS URL and token first.")
+            is SyncOutcome.Failed -> SyncState.Failed(outcome.message)
+            is SyncOutcome.Success -> {
+                val skippedNote = if (outcome.skipped.isNotEmpty()) {
+                    " Skipped: ${outcome.skipped.joinToString("; ")}"
+                } else {
+                    ""
+                }
+                SyncState.Done("Pushed ${outcome.pushed}, pulled ${outcome.pulled}.$skippedNote")
+            }
+        }
+    }
+
     companion object {
         val Factory = koFactory {
             SettingsViewModel(
                 agentImportRepo = it.agentImportRepository,
                 backupRepo = it.backupRepository,
+                syncSettingsRepo = it.syncSettingsRepository,
+                syncRepo = it.syncRepository,
             )
         }
     }

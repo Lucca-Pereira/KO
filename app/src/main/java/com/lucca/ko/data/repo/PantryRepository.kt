@@ -6,6 +6,7 @@ import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.ShoppingDao
 import com.lucca.ko.domain.IngredientMatcher
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -25,6 +26,20 @@ class PantryRepository(
 
     suspend fun byId(id: Long): PantryItem? = pantryDao.byId(id)
 
+    // ---- Sync ------------------------------------------------------------------------
+
+    suspend fun pantryByRemoteId(remoteId: String): PantryItem? = pantryDao.byRemoteId(remoteId)
+
+    suspend fun pendingSyncPush(): List<PantryItem> = pantryDao.pendingPush()
+
+    suspend fun stampSynced(id: Long, syncedAt: Long) = pantryDao.stampSynced(id, syncedAt)
+
+    suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long) =
+        pantryDao.stampSync(id, remoteId, updatedAt, syncedAt)
+
+    suspend fun setRemoteId(id: Long, remoteId: String) = pantryDao.setRemoteId(id, remoteId)
+
+    /** Returns the saved row's id — callers that need to stamp sync metadata onto it want this. */
     suspend fun savePantryItem(
         id: Long?,
         name: String,
@@ -32,12 +47,13 @@ class PantryRepository(
         status: StockStatus,
         quantity: String?,
         note: String?,
-    ) {
+    ): Long? {
         val clean = name.trim()
-        if (clean.isEmpty()) return
+        if (clean.isEmpty()) return null
         val normalized = IngredientMatcher.normalize(clean)
         val existing = if (id != null) pantryDao.byId(id) else pantryDao.byNormalized(normalized)
-        val item = (existing ?: PantryItem(name = clean, normalizedName = normalized)).copy(
+        val fresh = PantryItem(name = clean, normalizedName = normalized, remoteId = UUID.randomUUID().toString())
+        val item = (existing ?: fresh).copy(
             name = clean,
             normalizedName = normalized,
             category = category,
@@ -47,7 +63,9 @@ class PantryRepository(
             updatedAt = System.currentTimeMillis(),
         )
         val savedId = pantryDao.upsert(item)
-        syncShoppingForPantry(item.copy(id = if (item.id != 0L) item.id else savedId))
+        val finalId = if (item.id != 0L) item.id else savedId
+        syncShoppingForPantry(item.copy(id = finalId))
+        return finalId
     }
 
     suspend fun cyclePantryStatus(item: PantryItem) {
@@ -83,6 +101,7 @@ class PantryRepository(
                         normalizedName = item.normalizedName,
                         category = item.category,
                         pantryItemId = item.id.takeIf { it != 0L },
+                        remoteId = UUID.randomUUID().toString(),
                     ),
                 )
             }

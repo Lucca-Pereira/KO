@@ -16,6 +16,22 @@ interface ShoppingDao {
     @Query("SELECT * FROM shopping_items WHERE normalizedName = :normalized LIMIT 1")
     suspend fun byNormalized(normalized: String): ShoppingListItem?
 
+    @Query("SELECT * FROM shopping_items WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun byRemoteId(remoteId: String): ShoppingListItem?
+
+    /** Shopping items only ever push once, as new rows — no edit-sync, so no updatedAt to check. */
+    @Query("SELECT * FROM shopping_items WHERE syncedAt IS NULL")
+    suspend fun pendingPush(): List<ShoppingListItem>
+
+    @Query("UPDATE shopping_items SET syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSynced(id: Long, syncedAt: Long)
+
+    @Query("UPDATE shopping_items SET remoteId = :remoteId, syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSync(id: Long, remoteId: String, syncedAt: Long)
+
+    @Query("UPDATE shopping_items SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(item: ShoppingListItem): Long
 

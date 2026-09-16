@@ -1,6 +1,9 @@
 package com.lucca.ko
 
 import android.app.Application
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,5 +32,17 @@ class KoApp : Application() {
             runCatching { container.foodSeedLoader.seedIfEmpty() }
             runCatching { container.supplementRepository.seedDefaultsIfEmpty() }
         }
+
+        // ON_START fires once for the initial launch and again every time the app returns to the
+        // foreground from the background — exactly "sync on foreground" from the process level,
+        // rather than tied to any one screen's composition. SyncRepository itself no-ops quietly
+        // when no NAS URL/token is set, so this is harmless before the user ever configures sync.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    applicationScope.launch { runCatching { container.syncRepository.sync() } }
+                }
+            },
+        )
     }
 }

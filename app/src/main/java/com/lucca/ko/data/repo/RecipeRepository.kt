@@ -23,6 +23,7 @@ import com.lucca.ko.domain.recipe.toIngredients
 import com.lucca.ko.domain.recipe.toRecipe
 import com.lucca.ko.domain.recipe.toSteps
 import com.lucca.ko.domain.units.MeasureParser
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 /** Recipes sharing a normalised title. */
@@ -51,11 +52,28 @@ class RecipeRepository(
 
     suspend fun recipeById(id: Long): Recipe? = recipeDao.recipeById(id)
 
+    // ---- Sync ------------------------------------------------------------------------
+
+    suspend fun recipeByRemoteId(remoteId: String): Recipe? = recipeDao.byRemoteId(remoteId)
+
+    suspend fun detailsOnce(id: Long): RecipeWithDetails? = recipeDao.recipeWithDetailsOnce(id)
+
+    suspend fun pendingSyncPush(): List<Recipe> = recipeDao.pendingPush()
+
+    suspend fun stampSynced(id: Long, syncedAt: Long) = recipeDao.stampSynced(id, syncedAt)
+
+    suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long) =
+        recipeDao.stampSync(id, remoteId, updatedAt, syncedAt)
+
+    suspend fun setRemoteId(id: Long, remoteId: String) = recipeDao.setRemoteId(id, remoteId)
+
     // ---- Creating ------------------------------------------------------------------
 
     /** Creates an empty recipe for the editor to fill in. Returns its id. */
     suspend fun createBlankRecipe(title: String = ""): Long {
-        val id = recipeDao.insertRecipe(Recipe(title = title.trim(), source = RecipeSource.MANUAL))
+        val id = recipeDao.insertRecipe(
+            Recipe(title = title.trim(), source = RecipeSource.MANUAL, remoteId = UUID.randomUUID().toString()),
+        )
         refreshSearchBlob(id)
         return id
     }
@@ -80,6 +98,7 @@ class RecipeRepository(
                 title = title.trim(),
                 sourceUrl = url?.trim()?.ifEmpty { null },
                 source = RecipeSource.MANUAL,
+                remoteId = UUID.randomUUID().toString(),
             ),
             ingredients,
         )
@@ -165,18 +184,23 @@ class RecipeRepository(
      */
     suspend fun saveDraft(draft: RecipeDraft): Long {
         val now = System.currentTimeMillis()
-        val recipe = draft.toRecipe(now)
         val id = if (draft.isNew) {
-            recipeDao.insertRecipe(recipe)
+            recipeDao.insertRecipe(draft.toRecipe(now).copy(remoteId = UUID.randomUUID().toString()))
         } else {
-            recipeDao.updateRecipe(recipe)
+            // toRecipe() builds a fresh Recipe from the draft's text fields alone, which don't
+            // carry remoteId/syncedAt — copying them from the stored row keeps an edited recipe
+            // linked to its NAS-side counterpart instead of silently orphaning it on every save.
+            val existing = recipeDao.recipeById(draft.id)
+            recipeDao.updateRecipe(
+                draft.toRecipe(now).copy(remoteId = existing?.remoteId, syncedAt = existing?.syncedAt),
+            )
             draft.id
         }
         recipeDao.replaceIngredients(id, draft.toIngredients(id))
         recipeDao.replaceSteps(id, draft.toSteps(id))
         setTags(id, draft.tags)
         // A rename must not leave the plan showing the old name in its fallback snapshot.
-        mealPlanDao.refreshTitleSnapshots(id, recipe.title)
+        mealPlanDao.refreshTitleSnapshots(id, draft.title.trim())
         refreshSearchBlob(id)
         return id
     }
@@ -252,6 +276,7 @@ class RecipeRepository(
                 normalizedName = ingredient.normalizedName,
                 category = CategoryGuesser.guess(ingredient.rawName),
                 status = status,
+                remoteId = UUID.randomUUID().toString(),
             )
             val newId = pantryDao.upsert(newItem)
             val saved = newItem.copy(id = newId)
@@ -283,6 +308,7 @@ class RecipeRepository(
                         normalizedName = ingredient.normalizedName,
                         category = match?.category ?: CategoryGuesser.guess(ingredient.rawName),
                         pantryItemId = match?.id,
+                        remoteId = UUID.randomUUID().toString(),
                     ),
                 )
             }
@@ -298,6 +324,7 @@ class RecipeRepository(
                         normalizedName = item.normalizedName,
                         category = item.category,
                         pantryItemId = item.id.takeIf { it != 0L },
+                        remoteId = UUID.randomUUID().toString(),
                     ),
                 )
             }

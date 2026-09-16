@@ -9,6 +9,7 @@ import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.PantryRepository
+import com.lucca.ko.data.repo.RecipeMerge
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
@@ -62,7 +63,7 @@ class AgentImportRepositoryTest {
             pantryRepository = PantryRepository(db.pantryDao(), db.shoppingDao()),
             mealPlanRepository = MealPlanRepository(db.mealPlanDao(), db.recipeDao()),
             shoppingRepository = ShoppingRepository(db.shoppingDao(), db.pantryDao()),
-            revisionRepository = revisions,
+            recipeMerge = RecipeMerge(recipes, revisions),
         )
     }
 

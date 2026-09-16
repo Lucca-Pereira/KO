@@ -5,17 +5,21 @@ import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SettingsRepository
+import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.OpenFoodFactsClient
+import com.lucca.ko.data.remote.sync.KoSyncClient
 import com.lucca.ko.data.repair.StartupRepairs
 import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.data.repo.BodyRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.NutritionRepository
 import com.lucca.ko.data.repo.PantryRepository
+import com.lucca.ko.data.repo.RecipeMerge
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SupplementRepository
+import com.lucca.ko.data.repo.SyncRepository
 import com.lucca.ko.data.seed.FoodSeedLoader
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -64,13 +68,31 @@ class AppContainer(context: Context) {
         MealPlanRepository(database.mealPlanDao(), database.recipeDao())
     }
 
+    val recipeMerge: RecipeMerge by lazy { RecipeMerge(recipeRepository, revisionRepository) }
+
     val agentImportRepository: AgentImportRepository by lazy {
         AgentImportRepository(
             recipeRepository = recipeRepository,
             pantryRepository = pantryRepository,
             mealPlanRepository = mealPlanRepository,
             shoppingRepository = shoppingRepository,
-            revisionRepository = revisionRepository,
+            recipeMerge = recipeMerge,
+        )
+    }
+
+    val syncSettingsRepository: SyncSettingsRepository by lazy { SyncSettingsRepository(appContext) }
+
+    private val koSyncClient: KoSyncClient by lazy { KoSyncClient(httpClient) }
+
+    val syncRepository: SyncRepository by lazy {
+        SyncRepository(
+            recipeRepository = recipeRepository,
+            pantryRepository = pantryRepository,
+            shoppingRepository = shoppingRepository,
+            mealPlanRepository = mealPlanRepository,
+            recipeMerge = recipeMerge,
+            syncSettingsRepository = syncSettingsRepository,
+            koSyncClient = koSyncClient,
         )
     }
 

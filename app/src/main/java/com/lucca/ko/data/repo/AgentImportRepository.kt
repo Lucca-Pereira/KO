@@ -1,14 +1,9 @@
 package com.lucca.ko.data.repo
 
-import com.lucca.ko.data.db.MacroSource
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.RecipeSource
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.domain.CategoryGuesser
-import com.lucca.ko.domain.recipe.IngredientDraft
-import com.lucca.ko.domain.recipe.RecipeDraft
-import com.lucca.ko.domain.recipe.StepDraft
-import com.lucca.ko.domain.recipe.toDraft
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
@@ -43,7 +38,7 @@ class AgentImportRepository(
     private val pantryRepository: PantryRepository,
     private val mealPlanRepository: MealPlanRepository,
     private val shoppingRepository: ShoppingRepository,
-    private val revisionRepository: RevisionRepository,
+    private val recipeMerge: RecipeMerge,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -84,33 +79,26 @@ class AgentImportRepository(
 
     private suspend fun saveRecipe(entry: RecipeImportEntry) {
         require(entry.title.isNotBlank()) { "no title" }
-        val existing = entry.recipeId.takeIf { it > 0 }
-            ?.let { recipeRepository.observeRecipe(it).first() }
-        // Same insurance an accepted chat proposal used to get: snapshot before overwriting.
-        existing?.let { revisionRepository.snapshot(entry.recipeId, it, reason = "Claude import") }
-
-        val base = existing?.toDraft()
-        val draft = (base ?: RecipeDraft(source = RecipeSource.AI)).copy(
-            title = entry.title,
-            servingsText = entry.servings.toString(),
-            prepText = entry.prepMinutes?.toString().orEmpty(),
-            cookText = entry.cookMinutes?.toString().orEmpty(),
-            notes = entry.notes.orEmpty(),
-            ingredients = entry.ingredients.mapIndexed { i, ing ->
-                IngredientDraft(key = -(i + 1L), name = ing.name, amount = ing.amount, optional = ing.optional)
-            },
-            steps = entry.steps.mapIndexed { i, s ->
-                StepDraft(key = -(i + 1L), text = s.text, minutesText = s.minutes?.toString().orEmpty())
-            },
-            tags = (base?.tags.orEmpty() + entry.tags).distinctBy { it.lowercase() },
-            kcalPerServing = entry.kcalPerServing,
-            proteinG = entry.proteinG,
-            carbsG = entry.carbsG,
-            fatG = entry.fatG,
-            macroSource = if (entry.kcalPerServing != null) MacroSource.AI else null,
-            macroNote = entry.macroNote,
+        recipeMerge.apply(
+            existingId = entry.recipeId.takeIf { it > 0 },
+            fields = RecipeFields(
+                title = entry.title,
+                servings = entry.servings,
+                prepMinutes = entry.prepMinutes,
+                cookMinutes = entry.cookMinutes,
+                notes = entry.notes,
+                tags = entry.tags,
+                kcalPerServing = entry.kcalPerServing,
+                proteinG = entry.proteinG,
+                carbsG = entry.carbsG,
+                fatG = entry.fatG,
+                macroNote = entry.macroNote,
+                ingredients = entry.ingredients.map { RecipeFieldIngredient(it.name, it.amount, it.optional) },
+                steps = entry.steps.map { RecipeFieldStep(it.text, it.minutes) },
+            ),
+            source = RecipeSource.AI,
+            reason = "Claude import",
         )
-        recipeRepository.saveDraft(draft)
     }
 
     private suspend fun applyPantryUpdate(entry: PantryUpdateEntry) {
