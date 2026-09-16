@@ -106,6 +106,10 @@ fun ProfileScreen(
     var manualKcal by remember(profile.manualKcalTarget) {
         mutableStateOf(profile.manualKcalTarget?.toString().orEmpty())
     }
+    // Off until a save is actually attempted, so a blank first-run screen doesn't open already
+    // covered in red — only once someone has tried to save incomplete data do the specific
+    // fields explain themselves, instead of the button just silently refusing to do anything.
+    var showErrors by remember { mutableStateOf(false) }
 
     val edited = profile.copy(
         heightCm = height.toDoubleOrNull() ?: 0.0,
@@ -152,12 +156,28 @@ fun ProfileScreen(
                 }
             }
 
+            val birthYearInvalid = showErrors && edited.birthYear <= 1900
+            val heightInvalid = showErrors && edited.heightCm <= 50
+            val weightInvalid = showErrors && edited.weightKg <= 20
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DecimalField(birthYear, { birthYear = it }, "Birth year", Modifier.weight(1f))
-                DecimalField(height, { height = it }, "Height (cm)", Modifier.weight(1f))
+                DecimalField(
+                    birthYear, { birthYear = it }, "Birth year", Modifier.weight(1f),
+                    isError = birthYearInvalid,
+                    supportingText = if (birthYearInvalid) "e.g. 1995" else null,
+                )
+                DecimalField(
+                    height, { height = it }, "Height (cm)", Modifier.weight(1f),
+                    isError = heightInvalid,
+                    supportingText = if (heightInvalid) "Required" else null,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DecimalField(weight, { weight = it }, "Weight (kg)", Modifier.weight(1f))
+                DecimalField(
+                    weight, { weight = it }, "Weight (kg)", Modifier.weight(1f),
+                    isError = weightInvalid,
+                    supportingText = if (weightInvalid) "Required" else null,
+                )
                 DecimalField(bodyFat, { bodyFat = it }, "Body fat % (opt)", Modifier.weight(1f))
             }
             if (bodyFat.toDoubleOrNull() != null) {
@@ -256,8 +276,20 @@ fun ProfileScreen(
                 }
             }
 
+            if (showErrors && !edited.isComplete) {
+                Text(
+                    "Fill in birth year, height and weight to save.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             Button(
                 onClick = {
+                    if (!edited.isComplete) {
+                        showErrors = true
+                        return@Button
+                    }
                     vm.edit {
                         it.copy(
                             heightCm = edited.heightCm,
@@ -269,7 +301,6 @@ fun ProfileScreen(
                     }
                     vm.save()
                 },
-                enabled = edited.isComplete,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
             ) { Text("Save") }
         }

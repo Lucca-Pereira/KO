@@ -213,6 +213,8 @@ internal fun DecimalField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    isError: Boolean = false,
+    supportingText: String? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -223,6 +225,8 @@ internal fun DecimalField(
         },
         label = { Text(label) },
         singleLine = true,
+        isError = isError,
+        supportingText = supportingText?.let { { Text(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         modifier = modifier.fillMaxWidth(),
     )
