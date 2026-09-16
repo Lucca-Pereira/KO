@@ -102,7 +102,7 @@ class SyncRepositoryTest {
     @After
     fun tearDown() {
         db.close()
-        server.shutdown()
+        runCatching { server.shutdown() } // some tests shut it down themselves mid-test
     }
 
     private suspend fun configure() {
@@ -118,6 +118,20 @@ class SyncRepositoryTest {
         val outcome = syncRepository.sync()
         assertEquals(SyncOutcome.NotConfigured, outcome)
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `a connection failure returns Failed instead of crashing the caller`() = runTest {
+        // The actual bug this regression-tests: a plain connection-level failure (server down,
+        // wrong port, cleartext blocked) used to propagate as a raw exception out of sync() and
+        // crash whatever called it — a manual "Sync now" tap had no other safety net. Shutting
+        // the fake server down first means the connection itself fails, not just the request.
+        syncSettings.setNasUrl(server.url("/").toString())
+        syncSettings.setToken("test-token")
+        server.shutdown()
+
+        val outcome = syncRepository.sync()
+        assertTrue(outcome is SyncOutcome.Failed)
     }
 
     @Test

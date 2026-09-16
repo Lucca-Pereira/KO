@@ -8,7 +8,6 @@ import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.sync.KoSyncClient
-import com.lucca.ko.data.remote.sync.KoSyncException
 import com.lucca.ko.data.remote.sync.MealPlanEntryWire
 import com.lucca.ko.data.remote.sync.PantryItemWire
 import com.lucca.ko.data.remote.sync.RecipeIngredientWire
@@ -19,6 +18,7 @@ import com.lucca.ko.data.remote.sync.SyncPush
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 sealed interface SyncOutcome {
@@ -84,8 +84,13 @@ class SyncRepository(
                 SyncPush(recipeWires, pantryWires, shoppingWires, planWires),
                 token,
             )
-        } catch (e: KoSyncException) {
-            return SyncOutcome.Failed(e.message ?: "Sync failed.")
+        } catch (e: CancellationException) {
+            throw e // structured concurrency needs this to keep propagating, not get swallowed
+        } catch (e: Exception) {
+            // Anything the network can throw (connection refused, DNS failure, a timeout, TLS/
+            // cleartext rejection) lands here rather than crashing the caller — a manual "Sync
+            // now" tap has no other safety net, unlike the foreground trigger's own runCatching.
+            return SyncOutcome.Failed(e.message ?: "Sync failed: ${e::class.simpleName}")
         }
 
         // Anything we just pushed will echo back in the pull if it's now the newest version

@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Everything the app talks to (the Claude API, Open Food Facts) is HTTPS, so there is nothing to
-  allow cleartext for. This exists to make that explicit rather than relying on the platform
-  default.
+  Open Food Facts is HTTPS and hardcodes its own scheme, so cleartext buys it nothing either way.
+  The one real user of this: KoSyncClient talks to a NAS URL the user types into Settings, which
+  in practice is always a bare Tailscale address (http://100.x.x.x:port) — Tailscale is itself the
+  encrypted, authenticated transport there, so plain HTTP inside it is not "traffic in the clear"
+  the way it would be over the open internet. Android blocks cleartext by default since API 28
+  regardless of destination, so this has to be explicit or every sync attempt throws
+  CleartextNotPermittedException.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
