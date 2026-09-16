@@ -5,11 +5,14 @@ One process, one store, two front doors.
 
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .api.rest import router
 from .config import settings
@@ -25,6 +28,38 @@ log = logging.getLogger("ko_sync")
 # FastMCP builds its own ASGI app with its own lifespan (session manager, transports). That
 # lifespan has to run, so it is chained into ours rather than replaced.
 mcp_app = mcp.http_app(path="/")
+
+
+class RequireTokenAsgi:
+    """The same bearer check `auth.require_token` does for `/v1`, applied to `/mcp`.
+
+    FastMCP's app isn't a FastAPI router, so it can't take a `Depends` — MCP tools write data now
+    (unlike the old read-only `ko_brain`), so leaving this mount unauthenticated would mean the
+    Tailscale bind is the *only* lock on write access rather than the second one `auth.py` assumes
+    everywhere else.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        cfg = settings()
+        if cfg.auth_enabled:
+            headers = dict(scope.get("headers") or [])
+            supplied = headers.get(b"authorization", b"").decode("utf-8", "ignore")
+            token = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
+            if not hmac.compare_digest(token, cfg.api_token.strip()):
+                response = JSONResponse(
+                    {"detail": "Missing or invalid bearer token."}, status_code=401
+                )
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
 
 
 @asynccontextmanager
@@ -55,7 +90,7 @@ app = FastAPI(
 )
 
 app.include_router(router)
-app.mount("/mcp", mcp_app)
+app.mount("/mcp", RequireTokenAsgi(mcp_app))
 
 
 def run() -> None:
