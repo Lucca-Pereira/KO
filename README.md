@@ -45,6 +45,10 @@ one tap away from any screen (the gear, top right).
 3. Open the APK to install. Play Protect may warn — that is expected for a
    self-published app; choose *Install anyway*.
 
+> **Upgrading to v0.9.1:** fixes a crash on v0.9.0 — tapping **Sync now** (or syncing on
+> foreground) with a NAS configured could crash the app outright, because plain `http://`
+> traffic was blocked at the network-security-config level regardless of destination.
+>
 > **Upgrading to v0.9.0:** adds optional live sync with a NAS-hosted service (see
 > [Live sync with your own NAS](#live-sync-with-your-own-nas)) — entirely opt-in, nothing
 > changes if you don't set a NAS URL in Settings. The database migration only adds new
