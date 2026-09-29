@@ -189,11 +189,7 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
-                    onClick = {
-                        vm.setNasUrl(nasUrlField)
-                        vm.setNasToken(nasTokenField)
-                        vm.syncNow()
-                    },
+                    onClick = { vm.saveAndSync(nasUrlField, nasTokenField) },
                     enabled = sync != SyncState.Working,
                 ) { Text("Sync now") }
             }

@@ -139,11 +139,16 @@ class SettingsViewModel(
     private val _sync = MutableStateFlow<SyncState>(SyncState.Idle)
     val sync = _sync.asStateFlow()
 
-    fun setNasUrl(url: String) = viewModelScope.launch { syncSettingsRepo.setNasUrl(url) }
+    /** Saves what's in the fields, *then* syncs. These used to be three separate launches, so
+     *  the sync could start before the writes landed and send the previously saved token. */
+    fun saveAndSync(url: String, token: String) = viewModelScope.launch {
+        _sync.value = SyncState.Working
+        syncSettingsRepo.setNasUrl(url.trim())
+        syncSettingsRepo.setToken(token.trim())
+        runSync()
+    }
 
-    fun setNasToken(token: String) = viewModelScope.launch { syncSettingsRepo.setToken(token) }
-
-    fun syncNow() = viewModelScope.launch {
+    private suspend fun runSync() {
         _sync.value = SyncState.Working
         _sync.value = when (val outcome = syncRepo.sync()) {
             SyncOutcome.NotConfigured -> SyncState.Failed("Set a NAS URL and token first.")
