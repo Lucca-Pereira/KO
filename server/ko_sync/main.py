@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from . import store
 from .api.rest import router
 from .config import settings
 from .mcp_server import mcp
@@ -98,12 +99,11 @@ def create_app() -> FastAPI:
                 "KO_API_TOKEN is not set — every request is accepted. Fine on a Tailscale-only "
                 "bind, not fine on anything reachable from the LAN."
             )
-        if cfg.host in {"0.0.0.0", "::"}:  # noqa: S104 - the point is to warn about it
-            log.warning(
-                "Bound to %s, which exposes this on every interface. Bind the Tailscale address "
-                "instead.",
-                cfg.host,
-            )
+        # No warning for a 0.0.0.0 bind: in the container that's always the case and harmless —
+        # docker-compose.yml publishes on 127.0.0.1 only, and Funnel is the way in.
+
+        # Create/upgrade the schema now, so a problem shows at boot, not on the first request.
+        store.init()
 
         async with mcp_app.lifespan(app):
             yield

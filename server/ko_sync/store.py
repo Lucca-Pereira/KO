@@ -43,6 +43,12 @@ def _connect() -> sqlite3.Connection:
     return _connection
 
 
+def init() -> None:
+    """Opens the database and creates any missing tables. Called once at startup."""
+    with _lock:
+        _connect()
+
+
 def reset_for_tests() -> None:
     """Drops the cached connection so a new `db_path` (e.g. a tmp file per test) takes effect."""
     global _connection
