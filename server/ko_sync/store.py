@@ -222,6 +222,24 @@ def find_recipe_by_title(title: str) -> dict | None:
         return _row_to_recipe(row) if row else None
 
 
+def search_recipes_by_title(query: str) -> list[dict]:
+    """Substring match, case-insensitive. `instr` rather than LIKE so a `%` or `_` in the query
+    is matched literally instead of acting as a wildcard."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM recipes WHERE instr(lower(title), lower(?)) > 0 "
+            "ORDER BY title COLLATE NOCASE",
+            (query.strip(),),
+        )
+        return [_row_to_recipe(r) for r in cur.fetchall()]
+
+
+def all_recipes() -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM recipes ORDER BY title COLLATE NOCASE")
+        return [_row_to_recipe(r) for r in cur.fetchall()]
+
+
 # ---- Pantry -----------------------------------------------------------------------------------
 
 
@@ -291,6 +309,12 @@ def shopping_changed_since(since_millis: int) -> list[dict]:
         return [_row_to_shopping(r) for r in cur.fetchall()]
 
 
+def all_shopping_items() -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM shopping_items ORDER BY created_at")
+        return [_row_to_shopping(r) for r in cur.fetchall()]
+
+
 # ---- Meal plan (add-only) ----------------------------------------------------------------------
 
 
@@ -318,3 +342,57 @@ def plan_changed_since(since_millis: int) -> list[dict]:
     with _cursor() as cur:
         cur.execute("SELECT * FROM meal_plan_entries WHERE created_at > ?", (since_millis,))
         return [_row_to_plan(r) for r in cur.fetchall()]
+
+
+def plan_between(start: str | None, end: str | None) -> list[dict]:
+    """ISO dates compare correctly as strings, so plain text comparison is the date range."""
+    with _cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM meal_plan_entries
+            WHERE (? IS NULL OR date >= ?) AND (? IS NULL OR date <= ?)
+            ORDER BY date, slot
+            """,
+            (start, start, end, end),
+        )
+        return [_row_to_plan(r) for r in cur.fetchall()]
+
+
+# ---- Phone-side deletions ----------------------------------------------------------------------
+
+# table -> the column that says when the server first had the row's current version.
+_PRUNABLE = {
+    "recipes": "updated_at",
+    "pantry_items": "updated_at",
+    "shopping_items": "created_at",
+    "meal_plan_entries": "created_at",
+}
+
+
+def prune_absent(table: str, present_ids: list[str], seen_before: int) -> int:
+    """Drop rows the phone no longer has, so Claude stops seeing things deleted on the phone
+    (or ticked off the shopping list).
+
+    Only rows at or before `seen_before` (the phone's `lastSyncedAt`) are candidates: those are
+    rows the phone has already pulled, so their absence from its list means it deleted them. A
+    row written after that — e.g. something Claude just added — hasn't reached the phone yet, and
+    its absence means nothing. `seen_before == 0` (a phone's very first sync, or a reinstall)
+    prunes nothing at all.
+    """
+    if seen_before <= 0:
+        return 0
+    column = _PRUNABLE[table]
+    with _cursor() as cur:
+        cur.execute("CREATE TEMP TABLE IF NOT EXISTS _present (remote_id TEXT PRIMARY KEY)")
+        cur.execute("DELETE FROM _present")
+        cur.executemany(
+            "INSERT OR IGNORE INTO _present (remote_id) VALUES (?)", [(i,) for i in present_ids]
+        )
+        cur.execute(
+            f"DELETE FROM {table} WHERE {column} <= ? "  # noqa: S608 - table/column from _PRUNABLE
+            "AND remote_id NOT IN (SELECT remote_id FROM _present)",
+            (seen_before,),
+        )
+        removed = cur.rowcount
+        cur.execute("DELETE FROM _present")
+        return removed

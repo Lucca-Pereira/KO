@@ -14,6 +14,7 @@ import com.lucca.ko.data.remote.sync.RecipeIngredientWire
 import com.lucca.ko.data.remote.sync.RecipeStepWire
 import com.lucca.ko.data.remote.sync.RecipeWire
 import com.lucca.ko.data.remote.sync.ShoppingItemWire
+import com.lucca.ko.data.remote.sync.SyncPresent
 import com.lucca.ko.data.remote.sync.SyncPush
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
@@ -77,12 +78,22 @@ class SyncRepository(
             MealPlanEntryWire(remoteId, title, entry.date, entry.slot.name, entry.servings)
         }
 
+        // Read after the pending rows above have had their remoteIds assigned, so everything being
+        // pushed this round is also listed as present.
+        val present = SyncPresent(
+            recipes = recipeRepository.syncPresentIds(),
+            pantryItems = pantryRepository.syncPresentIds(),
+            shoppingItems = shoppingRepository.syncPresentIds(),
+            mealPlanEntries = mealPlanRepository.syncPresentIds(),
+        )
+
         val response = try {
             koSyncClient.sync(
                 nasUrl,
                 lastSyncedAt,
                 SyncPush(recipeWires, pantryWires, shoppingWires, planWires),
                 token,
+                present,
             )
         } catch (e: CancellationException) {
             throw e // structured concurrency needs this to keep propagating, not get swallowed

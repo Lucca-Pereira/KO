@@ -31,6 +31,12 @@ async def sync(req: SyncRequest) -> SyncResponse:
     for entry in req.push.mealPlanEntries:
         store.insert_plan_entry(entry.model_dump())
 
+    if req.present is not None:
+        store.prune_absent("recipes", req.present.recipes, req.lastSyncedAt)
+        store.prune_absent("pantry_items", req.present.pantryItems, req.lastSyncedAt)
+        store.prune_absent("shopping_items", req.present.shoppingItems, req.lastSyncedAt)
+        store.prune_absent("meal_plan_entries", req.present.mealPlanEntries, req.lastSyncedAt)
+
     server_time = store.now_millis()
     return SyncResponse(
         serverTime=server_time,

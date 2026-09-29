@@ -73,8 +73,22 @@ data class SyncPush(
     val mealPlanEntries: List<MealPlanEntryWire> = emptyList(),
 )
 
+/** Every remoteId the phone currently has, per collection: how deletions made here reach the NAS
+ *  (it drops rows it knows the phone has already seen but no longer lists). */
 @Serializable
-private data class SyncRequest(val lastSyncedAt: Long = 0, val push: SyncPush = SyncPush())
+data class SyncPresent(
+    val recipes: List<String> = emptyList(),
+    val pantryItems: List<String> = emptyList(),
+    val shoppingItems: List<String> = emptyList(),
+    val mealPlanEntries: List<String> = emptyList(),
+)
+
+@Serializable
+private data class SyncRequest(
+    val lastSyncedAt: Long = 0,
+    val push: SyncPush = SyncPush(),
+    val present: SyncPresent? = null,
+)
 
 @Serializable
 data class SyncResponse(
@@ -99,9 +113,15 @@ class KoSyncClient(private val http: OkHttpClient) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun sync(baseUrl: String, lastSyncedAt: Long, push: SyncPush, token: String): SyncResponse =
+    suspend fun sync(
+        baseUrl: String,
+        lastSyncedAt: Long,
+        push: SyncPush,
+        token: String,
+        present: SyncPresent? = null,
+    ): SyncResponse =
         withContext(Dispatchers.IO) {
-            val body = json.encodeToString(SyncRequest.serializer(), SyncRequest(lastSyncedAt, push))
+            val body = json.encodeToString(SyncRequest.serializer(), SyncRequest(lastSyncedAt, push, present))
             val url = baseUrl.trimEnd('/') + "/v1/sync"
             val request = Request.Builder()
                 .url(url)

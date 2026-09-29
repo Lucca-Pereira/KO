@@ -21,11 +21,15 @@ import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SyncOutcome
 import com.lucca.ko.data.repo.SyncRepository
+import com.lucca.ko.domain.IngredientMatcher
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -154,6 +158,35 @@ class SyncRepositoryTest {
         val stored = pantryRepository.snapshot().single()
         assertNotNull(stored.remoteId)
         assertNotNull(stored.syncedAt)
+    }
+
+    @Test
+    fun `every sync lists what the phone still has, minus ticked-off shopping`() = runTest {
+        // This list is how deletions reach the NAS — anything missing from it that the NAS knows
+        // the phone has already seen gets dropped there, so Claude stops seeing it.
+        configure()
+        pantryRepository.savePantryItem(
+            id = null, name = "Onion", category = "Produce", status = StockStatus.IN_STOCK,
+            quantity = null, note = null,
+        )
+        shoppingRepository.addManualShoppingItem("flour")
+        shoppingRepository.addManualShoppingItem("sugar")
+        val sugar = shoppingRepository.shoppingByNormalized(IngredientMatcher.normalize("sugar"))!!
+        shoppingRepository.setShoppingChecked(sugar, true)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse()))
+
+        syncRepository.sync() as SyncOutcome.Success
+
+        val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val present = body.getValue("present").jsonObject
+        fun ids(key: String) = present.getValue(key).jsonArray.map { it.jsonPrimitive.content }
+
+        // Two, not one: ticking sugar off puts it back in the pantry as in stock.
+        val pantryIds = pantryRepository.snapshot().map { it.remoteId }
+        assertEquals(2, pantryIds.size)
+        assertEquals(pantryIds.toSet(), ids("pantryItems").toSet())
+        val flour = shoppingRepository.shoppingByNormalized(IngredientMatcher.normalize("flour"))!!
+        assertEquals(listOf(flour.remoteId), ids("shoppingItems"))
     }
 
     @Test

@@ -37,6 +37,10 @@ interface MealPlanDao {
     @Query("UPDATE meal_plan SET remoteId = :remoteId, syncedAt = :syncedAt WHERE id = :id")
     suspend fun stampSync(id: Long, remoteId: String, syncedAt: Long)
 
+    /** Sent with every sync so the NAS can drop plan entries removed here. */
+    @Query("SELECT remoteId FROM meal_plan WHERE remoteId IS NOT NULL")
+    suspend fun allRemoteIds(): List<String>
+
     @Query("UPDATE meal_plan SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
 

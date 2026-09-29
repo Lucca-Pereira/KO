@@ -39,6 +39,10 @@ abstract class RecipeDao {
     @Query("UPDATE dishes SET syncedAt = :syncedAt WHERE id = :id")
     abstract suspend fun stampSynced(id: Long, syncedAt: Long)
 
+    /** Sent with every sync so the NAS can drop recipes deleted here. */
+    @Query("SELECT remoteId FROM dishes WHERE remoteId IS NOT NULL")
+    abstract suspend fun allRemoteIds(): List<String>
+
     /** Backfills a remoteId onto a row that predates sync existing at all (migrated in as NULL). */
     @Query("UPDATE dishes SET remoteId = :remoteId WHERE id = :id")
     abstract suspend fun setRemoteId(id: Long, remoteId: String)

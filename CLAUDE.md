@@ -54,12 +54,14 @@ matches existing rows by name/title where relevant, never wipes anything. That's
 distinct from `data/BackupRepository.kt`'s full export/import, which *does* wipe and
 replace everything (`db.clearAllTables()`), for moving to a new phone.
 
-A NAS-hosted sync service + MCP server (so Claude Desktop can write live instead of
-via a manual file) is planned but not yet built — see
-`C:\Users\lucca\.claude\plans\i-want-to-start-curried-dragon.md` for the design
-(two-column `remoteId`/`syncedAt` sync correlation, idempotent push-then-pull protocol,
-the exact pitfalls already found and fixed). `server/` currently has one scaffold file;
-treat anything else under it as not-yet-real until that plan is implemented.
+Alongside the file import there's an optional NAS sync service, `server/ko_sync`
+(FastAPI + FastMCP, Docker): the phone syncs to it via `SyncRepository` (`POST /v1/sync`,
+bearer token), and Claude reaches the same store as a claude.ai custom connector at
+`/mcp` (Google sign-in limited to `KO_ALLOWED_EMAILS`, exposed publicly via Tailscale
+Funnel). Design history: `C:\Users\lucca\.claude\plans\i-want-to-start-curried-dragon.md`.
+Deletions reach the NAS through the `present` id lists each sync sends — the server
+prunes only rows the phone has already seen (`store.prune_absent`). Server tests:
+`cd server && .venv/Scripts/python -m pytest` and `ruff check .`.
 
 **Undo is a snapshot stack, not a diff.** `RevisionRepository` (backed by
 `RevisionDao`/`recipe_revisions`) stores a full serialized `RecipeDraft` before any

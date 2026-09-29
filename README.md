@@ -14,9 +14,11 @@ A personal Android app to run your kitchen:
   talk to it, and import the small file it gives you from **Settings**. Editing an
   existing recipe this way is undoable, same as a manual edit. See
   [Ask Claude for recipes](#ask-claude-for-recipes) below for the exact file shape.
-- **NAS sync (optional)** – if you run the small `server/` service on your own NAS, the
-  app syncs with it automatically on foreground: Claude Desktop can add recipes and
-  pantry updates directly over MCP, no file to carry over. See
+- **Claude connector via NAS sync (optional)** – if you run the small `server/` service
+  on your own NAS, the app syncs with it every time you open it, and Claude — in the
+  normal Claude app on your phone, desktop or claude.ai — can see your pantry, recipes,
+  plan and shopping list, suggest what to cook, plan your week, and save recipes and
+  updates straight back. No file to carry over. See
   [Live sync with your own NAS](#live-sync-with-your-own-nas) below. The file-import
   workflow above still works with or without this — it's the fallback for whenever the
   NAS is unreachable, or if you never set one up at all.
@@ -33,7 +35,7 @@ you don't. Mark one *Ran out* and it flips your pantry and lands on the shopping
 
 KO doesn't call any AI itself — no API key, no billing baked into the app. Recipes and
 pantry updates come from asking Claude directly, either importing a file it writes or,
-if you've set up the optional NAS sync, straight from a Claude Desktop chat. Settings is
+if you've set up the optional NAS sync, straight from any Claude chat. Settings is
 one tap away from any screen (the gear, top right).
 
 ## Install
@@ -151,18 +153,51 @@ See `data/repo/AgentImportRepository.kt` for the authoritative shape if this dri
 
 ## Live sync with your own NAS
 
-Optional, and off by default. If you run the `server/` service (see `server/README.md`
-if present, or `server/docker-compose.yml`) on a NAS or box you control, KO can sync
-with it directly instead of the file-import dance above:
+Optional, and off by default. If you run the `server/` service on a NAS or box you
+control, it sits between the app and Claude: the phone syncs its pantry, recipes, plan
+and shopping list to it, and Claude reads and writes the same data through a connector.
+Claude never talks to the phone directly — the NAS is the always-on middle.
 
-1. Deploy `server/` — it needs Docker and a `KO_API_TOKEN` set in `server/.env`. It binds
-   to the host's Tailscale address on purpose, so only your own devices can reach it.
-2. In the app, **Settings → NAS sync**, enter the NAS's URL (e.g. `http://100.x.x.x:8090`)
-   and the same token. Tap **Sync now**, or just open the app — it syncs automatically on
-   every foreground.
-3. Point Claude Desktop's MCP config at `http://<that-url>/mcp` with the same bearer
-   token, and it can add recipes, update the pantry, and add shopping/plan entries
-   directly — no file, no import step. It cannot delete anything; that stays phone-only.
+```
+phone app ──(token, HTTPS)──►  NAS: ko-sync  ◄──(Google sign-in, HTTPS)── Claude connector
+```
+
+**What Claude can do with it:** read the pantry (in stock / low / out), browse and search
+saved recipes, see the meal plan and shopping list — then save or edit recipes, update
+pantry items, add to the plan, and add to the shopping list (skipping what's already on
+it). It can't delete anything; that stays on the phone. Whatever you delete on the phone,
+or tick off the shopping list, drops off Claude's view on the next sync.
+
+### Setting it up
+
+1. **Tailscale Funnel on the NAS** gives the service a public HTTPS address without
+   opening your router. The container only listens on the NAS's own `127.0.0.1:8090`;
+   Funnel forwards to it: `tailscale funnel --bg --https=8443 http://localhost:8090`. The
+   URL is then `https://<nas>.<tailnet>.ts.net:8443`. Funnel only works on ports 443, 8443
+   and 10000, and turning it on makes *everything* served on that port public — so give KO
+   a port of its own (move any private `tailscale serve` route off it first). Funnel must
+   also be allowed for the NAS in the Tailscale admin console (Access controls → `funnel`
+   node attribute) the first time.
+2. **A Google OAuth client** (free) at
+   <https://console.cloud.google.com/apis/credentials> → *Create credentials → OAuth client
+   ID → Web application*, with the authorized redirect URI `<funnel URL>/auth/callback`.
+   On the consent screen, leave it in *Testing* and add your own Google account as a test
+   user.
+3. **`server/.env`** — copy `server/.env.example` and fill in `KO_API_TOKEN` (any long random
+   string), `KO_PUBLIC_URL` (the Funnel URL), `KO_GOOGLE_CLIENT_ID` /
+   `KO_GOOGLE_CLIENT_SECRET`, and `KO_ALLOWED_EMAILS` (your Google address — everyone else
+   is refused). Then `docker compose up -d --build` in `server/`. It refuses to start if a
+   setting would leave it open (a public URL with no token, Google with no allowlist).
+4. **The phone:** Settings → NAS sync, enter the Funnel URL and the token, tap **Sync
+   now**. It syncs from anywhere now — no Tailscale needed on the phone.
+5. **Claude:** on claude.ai, *Settings → Connectors → Add custom connector*, URL
+   `<funnel URL>/mcp`. Sign in with Google when asked. It then shows up in the Claude app
+   on your phone and desktop too — enable it for a chat from the tools menu.
+
+Without the Google settings, `/mcp` falls back to the bearer token — enough for a
+tailnet-only Claude Desktop setup through
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with an
+`Authorization: Bearer <token>` header, but not for the phone app or claude.ai.
 
 Both syncing and the file-import workflow above use the same underlying merge logic
 (`data/repo/RecipeMerge.kt`, `data/repo/SyncRepository.kt`), so they're safe to use

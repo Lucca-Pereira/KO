@@ -69,6 +69,8 @@ class MealPlanRepository(
 
     suspend fun pendingSyncPush(): List<MealPlanEntry> = mealPlanDao.pendingPush()
 
+    suspend fun syncPresentIds(): List<String> = mealPlanDao.allRemoteIds()
+
     suspend fun insertFromSync(entry: MealPlanEntry): Long = mealPlanDao.insert(entry)
 
     suspend fun stampSynced(id: Long, syncedAt: Long) = mealPlanDao.stampSynced(id, syncedAt)

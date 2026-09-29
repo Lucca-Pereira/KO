@@ -63,6 +63,8 @@ class ShoppingRepository(
 
     suspend fun pendingSyncPush(): List<ShoppingListItem> = shoppingDao.pendingPush()
 
+    suspend fun syncPresentIds(): List<String> = shoppingDao.uncheckedRemoteIds()
+
     /**
      * Inserts a row pulled from the NAS, already carrying its remoteId — unlike
      * [addManualShoppingItem], which is for the user typing a name and always mints a fresh one.

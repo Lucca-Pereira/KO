@@ -1,20 +1,26 @@
 # KO sync on the NAS.
 #
-# The container binds 0.0.0.0 *inside* its own network namespace; the published port below is
-# what decides who can reach it. Publishing on the Tailscale address means the tailnet can and
-# the LAN cannot — change that IP and you change who has access.
+# Published on 127.0.0.1 only: nothing on the LAN or tailnet reaches the container directly.
+# Tailscale Funnel is the one way in — it terminates HTTPS on the public ts.net address and
+# forwards to localhost:8090, for both the phone and Claude:
+#   tailscale funnel --bg --https=8443 http://localhost:8090
+#
+# (An earlier version published on the Tailscale IP instead. That bind fails whenever Docker
+# starts before tailscaled has brought the address up — e.g. after a reboot — and the container
+# exits for good. Localhost is always there.)
 services:
   ko-sync:
     build: .
     container_name: ko-sync
     restart: unless-stopped
     ports:
-      # <tailscale-ip>:<host port>:<container port>
-      # 100.67.219.26 is this NAS's Tailscale IP as of the old ko-brain service (be22767) —
-      # confirm it's still current before deploying.
-      - "100.67.219.26:8090:8090"
+      - "127.0.0.1:8090:8090"
     environment:
       KO_API_TOKEN: "${KO_API_TOKEN:?set KO_API_TOKEN in .env}"
+      KO_PUBLIC_URL: "${KO_PUBLIC_URL:-}"
+      KO_GOOGLE_CLIENT_ID: "${KO_GOOGLE_CLIENT_ID:-}"
+      KO_GOOGLE_CLIENT_SECRET: "${KO_GOOGLE_CLIENT_SECRET:-}"
+      KO_ALLOWED_EMAILS: "${KO_ALLOWED_EMAILS:-}"
     volumes:
       - ko-sync-data:/data
 

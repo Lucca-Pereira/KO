@@ -163,8 +163,10 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
             Text("NAS sync", style = MaterialTheme.typography.titleMedium)
             Text(
                 "If you're running the KO sync service on your own NAS, point the app at it here " +
-                    "and Claude Desktop can add recipes and pantry updates directly — no file to " +
-                    "carry over. Syncs automatically when you open the app, or tap Sync now.",
+                    "and Claude (with the KO connector added) can see your pantry and add " +
+                    "recipes, plans and shopping directly — no file to carry over. Use the " +
+                    "https:// address to sync from anywhere. Syncs when you open the app, or tap " +
+                    "Sync now.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -172,7 +174,7 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
                 value = nasUrlField,
                 onValueChange = { nasUrlField = it },
                 label = { Text("NAS URL") },
-                placeholder = { Text("http://100.x.x.x:8090") },
+                placeholder = { Text("https://your-nas.tailnet.ts.net") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),

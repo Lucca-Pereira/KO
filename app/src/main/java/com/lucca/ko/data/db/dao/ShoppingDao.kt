@@ -29,6 +29,11 @@ interface ShoppingDao {
     @Query("UPDATE shopping_items SET remoteId = :remoteId, syncedAt = :syncedAt WHERE id = :id")
     suspend fun stampSync(id: Long, remoteId: String, syncedAt: Long)
 
+    /** Sent with every sync so the NAS can drop items removed here. Ticked-off items are left
+     *  out on purpose: bought means off the list, as far as Claude is concerned. */
+    @Query("SELECT remoteId FROM shopping_items WHERE remoteId IS NOT NULL AND checked = 0")
+    suspend fun uncheckedRemoteIds(): List<String>
+
     @Query("UPDATE shopping_items SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
 

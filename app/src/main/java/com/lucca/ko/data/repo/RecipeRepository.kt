@@ -60,6 +60,8 @@ class RecipeRepository(
 
     suspend fun pendingSyncPush(): List<Recipe> = recipeDao.pendingPush()
 
+    suspend fun syncPresentIds(): List<String> = recipeDao.allRemoteIds()
+
     suspend fun stampSynced(id: Long, syncedAt: Long) = recipeDao.stampSynced(id, syncedAt)
 
     suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long) =

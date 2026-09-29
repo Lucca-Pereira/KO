@@ -32,6 +32,8 @@ class PantryRepository(
 
     suspend fun pendingSyncPush(): List<PantryItem> = pantryDao.pendingPush()
 
+    suspend fun syncPresentIds(): List<String> = pantryDao.allRemoteIds()
+
     suspend fun stampSynced(id: Long, syncedAt: Long) = pantryDao.stampSynced(id, syncedAt)
 
     suspend fun stampSync(id: Long, remoteId: String, updatedAt: Long, syncedAt: Long) =

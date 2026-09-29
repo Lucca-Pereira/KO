@@ -76,10 +76,22 @@ class SyncPush(BaseModel):
     mealPlanEntries: list[MealPlanEntryWire] = Field(default_factory=list)
 
 
+class SyncPresent(BaseModel):
+    """Every remoteId the phone currently has, per collection — how deletions reach the server.
+    Shopping items ticked off on the phone are left out, so they drop off Claude's list too."""
+
+    recipes: list[str] = Field(default_factory=list)
+    pantryItems: list[str] = Field(default_factory=list)
+    shoppingItems: list[str] = Field(default_factory=list)
+    mealPlanEntries: list[str] = Field(default_factory=list)
+
+
 class SyncRequest(BaseModel):
     lastSyncedAt: int = 0
     """Epoch millis; 0 means the phone has never synced before."""
     push: SyncPush = Field(default_factory=SyncPush)
+    present: SyncPresent | None = None
+    """Omitted by app versions before 0.10 — then nothing is pruned."""
 
 
 class SyncResponse(BaseModel):

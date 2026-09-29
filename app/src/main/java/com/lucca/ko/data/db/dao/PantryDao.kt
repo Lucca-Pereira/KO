@@ -31,6 +31,10 @@ interface PantryDao {
     @Query("UPDATE pantry_items SET syncedAt = :syncedAt WHERE id = :id")
     suspend fun stampSynced(id: Long, syncedAt: Long)
 
+    /** Sent with every sync so the NAS can drop pantry items deleted here. */
+    @Query("SELECT remoteId FROM pantry_items WHERE remoteId IS NOT NULL")
+    suspend fun allRemoteIds(): List<String>
+
     @Query("UPDATE pantry_items SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
 

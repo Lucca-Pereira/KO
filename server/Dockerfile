@@ -10,13 +10,16 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir \
       "fastapi>=0.115" "uvicorn[standard]>=0.32" "pydantic>=2.9" "pydantic-settings>=2.6" \
-      "fastmcp>=2.3"
+      "fastmcp>=4.0,<5"
 
 COPY ko_sync ./ko_sync
 
 # The sync database lives here; mount a volume so it survives a rebuild.
 RUN mkdir -p /data
+# FASTMCP_HOME holds Google sign-in state (connector registrations, encrypted tokens) - on the
+# volume, so a rebuild doesn't make you reconnect Claude.
 ENV KO_DB_PATH=/data/ko-sync.sqlite3 \
+    FASTMCP_HOME=/data/fastmcp \
     KO_HOST=0.0.0.0 \
     KO_PORT=8090
 

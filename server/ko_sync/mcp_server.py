@@ -1,4 +1,4 @@
-"""The MCP surface, for Claude Desktop.
+"""The MCP surface, for Claude (a claude.ai connector, so the phone/desktop/web apps alike).
 
 Unlike the old `ko_brain` service, these tools **do** write — that's the whole point of this
 service's existence (see the plan this came out of: the NAS is now a second source of truth,
@@ -19,11 +19,14 @@ from . import store
 mcp = FastMCP(
     name="KO Kitchen",
     instructions=(
-        "Tools for lucca's personal kitchen app. You can read the pantry, search recipes, save "
-        "or edit a recipe, update a pantry item's stock status, add items to the shopping list, "
-        "and add a recipe to the meal plan. Changes here appear on the phone next time it syncs "
-        "(on app foreground, or a manual 'Sync now'). Nothing here can delete anything — deleting "
-        "stays phone-local."
+        "Tools for lucca's personal kitchen app (KO Kitchen). Use them to suggest meals from what "
+        "is actually in the pantry, plan the week, and keep the shopping list current. Read "
+        "first: get_pantry (stock status IN_STOCK / LOW / OUT), list_recipes / search_recipes, "
+        "get_meal_plan, get_shopping_list. Then write: save_recipe, update_pantry, "
+        "add_to_meal_plan (the recipe must be saved first), add_to_shopping_list (check "
+        "get_shopping_list first to avoid duplicates). Changes appear on the phone next time the "
+        "app syncs (whenever it's opened). This data is as fresh as the phone's last sync. "
+        "Nothing here can delete anything — deleting stays on the phone."
     ),
 )
 
@@ -35,14 +38,51 @@ async def get_pantry() -> list[dict]:
 
 
 @mcp.tool
+async def list_recipes() -> list[dict]:
+    """List every saved recipe in brief: title, tags, times, servings, macros and ingredient
+    names. Use search_recipes for a recipe's full ingredients with amounts and its steps."""
+    return [
+        {
+            "remoteId": r["remoteId"],
+            "title": r["title"],
+            "tags": r["tags"],
+            "servings": r["servings"],
+            "prepMinutes": r["prepMinutes"],
+            "cookMinutes": r["cookMinutes"],
+            "kcalPerServing": r["kcalPerServing"],
+            "proteinG": r["proteinG"],
+            "ingredients": [i.get("name") for i in r["ingredients"]],
+        }
+        for r in store.all_recipes()
+    ]
+
+
+@mcp.tool
 async def search_recipes(query: str) -> list[dict]:
-    """Find a recipe already saved in the library by title (case-insensitive, exact match).
+    """Find saved recipes whose title contains the query (case-insensitive), with full
+    ingredients, amounts and steps.
 
     Args:
-        query: The recipe's title.
+        query: All or part of the recipe's title, e.g. "teriyaki".
     """
-    match = store.find_recipe_by_title(query)
-    return [match] if match else []
+    return store.search_recipes_by_title(query)
+
+
+@mcp.tool
+async def get_meal_plan(start_date: str | None = None, end_date: str | None = None) -> list[dict]:
+    """List what's planned, ordered by date. Both bounds are inclusive and optional.
+
+    Args:
+        start_date: ISO date, e.g. "2026-09-28". Omit for no lower bound.
+        end_date: ISO date, e.g. "2026-10-04". Omit for no upper bound.
+    """
+    return store.plan_between(start_date, end_date)
+
+
+@mcp.tool
+async def get_shopping_list() -> list[dict]:
+    """List what's on the shopping list (items already ticked off on the phone are left out)."""
+    return store.all_shopping_items()
 
 
 @mcp.tool
@@ -68,8 +108,8 @@ async def save_recipe(
         title: The recipe's name.
         ingredients: Each item like {"name": "chicken thigh", "amount": "400 g", "optional": false}.
         steps: Each item like {"text": "Marinate for 10 minutes.", "minutes": 10}.
-        remote_id: Omit to create a new recipe. Pass an existing recipe's id (from search_recipes
-            or get_pantry-style listing) to replace it — send the whole recipe, not a diff.
+        remote_id: Omit to create a new recipe. Pass an existing recipe's remoteId (from
+            list_recipes or search_recipes) to replace it — send the whole recipe, not a diff.
         servings: How many servings this makes.
         prep_minutes: Prep time in minutes.
         cook_minutes: Cook time in minutes.
@@ -137,16 +177,19 @@ async def update_pantry(
 
 @mcp.tool
 async def add_to_shopping_list(items: list[str]) -> list[dict]:
-    """Add one or more items to the shopping list.
+    """Add one or more items to the shopping list. Items already on it are skipped.
 
     Args:
         items: Item names, e.g. ["flour", "sugar"].
     """
-    return [
-        store.insert_shopping_item({"remoteId": store.new_id(), "name": i})
-        for i in items
-        if i.strip()
-    ]
+    on_list = {i["name"].strip().lower() for i in store.all_shopping_items()}
+    added = []
+    for name in items:
+        key = name.strip().lower()
+        if key and key not in on_list:
+            on_list.add(key)
+            added.append(store.insert_shopping_item({"remoteId": store.new_id(), "name": name}))
+    return added
 
 
 @mcp.tool
