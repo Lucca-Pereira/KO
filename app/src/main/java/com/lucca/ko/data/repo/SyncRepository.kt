@@ -45,6 +45,8 @@ class SyncRepository(
     private val pantryRepository: PantryRepository,
     private val shoppingRepository: ShoppingRepository,
     private val mealPlanRepository: MealPlanRepository,
+    private val gymSyncRepository: GymSyncRepository,
+    private val bodyRepository: BodyRepository,
     private val recipeMerge: RecipeMerge,
     private val syncSettingsRepository: SyncSettingsRepository,
     private val koSyncClient: KoSyncClient,
@@ -78,6 +80,8 @@ class SyncRepository(
             MealPlanEntryWire(remoteId, title, entry.date, entry.slot.name, entry.servings)
         }
 
+        val gym = gymSyncRepository.pendingPush()
+
         // Read after the pending rows above have had their remoteIds assigned, so everything being
         // pushed this round is also listed as present.
         val present = SyncPresent(
@@ -85,15 +89,22 @@ class SyncRepository(
             pantryItems = pantryRepository.syncPresentIds(),
             shoppingItems = shoppingRepository.syncPresentIds(),
             mealPlanEntries = mealPlanRepository.syncPresentIds(),
+            nutritionEntries = gymSyncRepository.presentEntryIds(),
+            supplementLogs = gymSyncRepository.presentLogIds(),
+            bodyMetrics = gymSyncRepository.presentBodyDates(),
         )
 
         val response = try {
             koSyncClient.sync(
                 nasUrl,
                 lastSyncedAt,
-                SyncPush(recipeWires, pantryWires, shoppingWires, planWires),
+                SyncPush(
+                    recipeWires, pantryWires, shoppingWires, planWires,
+                    gym.entryWires, gym.logWires, gym.bodyWires,
+                ),
                 token,
                 present,
+                gymSyncRepository.snapshot(),
             )
         } catch (e: CancellationException) {
             throw e // structured concurrency needs this to keep propagating, not get swallowed
@@ -109,7 +120,9 @@ class SyncRepository(
         // applying it again would just be a wasted no-op write (and a spurious undo snapshot for
         // a recipe), so skip pull entries whose remoteId we pushed this round.
         val justPushed = (recipeWires.map { it.remoteId } + pantryWires.map { it.remoteId } +
-            shoppingWires.map { it.remoteId } + planWires.map { it.remoteId }).toSet()
+            shoppingWires.map { it.remoteId } + planWires.map { it.remoteId } +
+            gym.entryWires.map { it.remoteId } + gym.logWires.map { it.remoteId } +
+            gym.bodyWires.map { it.date }).toSet()
 
         val skipped = mutableListOf<String>()
         var pulled = 0
@@ -134,6 +147,22 @@ class SyncRepository(
                 .onSuccess { pulled++ }
                 .onFailure { skipped += "plan \"${wire.recipeTitle}\": ${it.message}" }
         }
+        // Ticks before diary lines, so a pulled supplement line finds its supplement already ticked.
+        response.supplementLogs.filterNot { it.remoteId in justPushed }.forEach { wire ->
+            runCatching { gymSyncRepository.applyLog(wire, response.serverTime) }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "supplement \"${wire.supplementName}\": ${it.message}" }
+        }
+        response.nutritionEntries.filterNot { it.remoteId in justPushed }.forEach { wire ->
+            runCatching { gymSyncRepository.applyEntry(wire, response.serverTime) }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "diary \"${wire.label}\": ${it.message}" }
+        }
+        response.bodyMetrics.filterNot { it.date in justPushed }.forEach { wire ->
+            runCatching { bodyRepository.saveFromSync(wire.toMetric(response.serverTime)) }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "weigh-in ${wire.date}: ${it.message}" }
+        }
 
         // Only after the pull is fully applied do we mark what we pushed as synced — a failure
         // partway through leaves those rows unstamped, so the next attempt retries them safely.
@@ -141,9 +170,11 @@ class SyncRepository(
         pendingPantry.forEach { pantryRepository.stampSynced(it.id, response.serverTime) }
         pendingShopping.forEach { shoppingRepository.stampSynced(it.id, response.serverTime) }
         pendingPlan.forEach { mealPlanRepository.stampSynced(it.id, response.serverTime) }
+        gymSyncRepository.stamp(gym, response.serverTime)
         syncSettingsRepository.setLastSyncedAt(response.serverTime)
 
-        val pushed = recipeWires.size + pantryWires.size + shoppingWires.size + planWires.size
+        val pushed = recipeWires.size + pantryWires.size + shoppingWires.size + planWires.size +
+            gym.entryWires.size + gym.logWires.size + gym.bodyWires.size
         return SyncOutcome.Success(pushed, pulled, skipped)
     }
 

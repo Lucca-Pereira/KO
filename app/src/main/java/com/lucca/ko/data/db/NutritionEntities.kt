@@ -90,7 +90,12 @@ data class FoodItem(
             onDelete = ForeignKey.SET_NULL,
         ),
     ],
-    indices = [Index("date"), Index("foodItemId"), Index("dishId")],
+    indices = [
+        Index("date"),
+        Index("foodItemId"),
+        Index("dishId"),
+        Index(value = ["remoteId"], unique = true),
+    ],
 )
 data class NutritionEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -113,6 +118,12 @@ data class NutritionEntry(
     val fatG: Double = 0.0,
     val fiberG: Double? = null,
     val note: String? = null,
+    /** Bumped on every edit, so an edited line is pushed again. Last-write-wins on the NAS. */
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    /** Assigned locally (UUID) before the first push; the NAS and Claude refer to it by this. */
+    val remoteId: String? = null,
+    /** Null means never pushed. */
+    val syncedAt: Long? = null,
 )
 
 /**
@@ -159,6 +170,8 @@ data class BodyMetric(
     val neckCm: Double? = null,
     val note: String? = null,
     val recordedAt: Long = System.currentTimeMillis(),
+    /** Null means never pushed. No remoteId: the date *is* the key on the NAS too. */
+    val syncedAt: Long? = null,
 )
 
 /**
@@ -201,7 +214,11 @@ data class Supplement(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["date", "supplementId"], unique = true), Index("supplementId")],
+    indices = [
+        Index(value = ["date", "supplementId"], unique = true),
+        Index("supplementId"),
+        Index(value = ["remoteId"], unique = true),
+    ],
 )
 data class SupplementLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -210,4 +227,8 @@ data class SupplementLog(
     @ColumnInfo(defaultValue = "1") val doses: Double = 1.0,
     val takenAt: Long = System.currentTimeMillis(),
     val note: String? = null,
+    /** Assigned locally (UUID) before the first push. */
+    val remoteId: String? = null,
+    /** Null means never pushed. A tick is never edited, only replaced or removed. */
+    val syncedAt: Long? = null,
 )

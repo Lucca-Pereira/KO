@@ -69,21 +69,96 @@ class MealPlanEntryWire(BaseModel):
     servings: float | None = None
 
 
+class NutritionEntryWire(BaseModel):
+    """One food-diary line. Carries its own macros, like the phone's row."""
+
+    remoteId: str
+    date: str
+    slot: str = "SNACK"
+    sourceType: str = "QUICK"
+    supplementName: str | None = None
+    label: str
+    grams: float | None = None
+    servings: float | None = None
+    kcal: float = 0.0
+    proteinG: float = 0.0
+    carbsG: float = 0.0
+    fatG: float = 0.0
+    fiberG: float | None = None
+    note: str | None = None
+    deleted: bool = False
+    updatedAt: int
+
+
+class SupplementLogWire(BaseModel):
+    remoteId: str
+    date: str
+    supplementName: str
+    doses: float = 1.0
+    deleted: bool = False
+    updatedAt: int
+
+
+class BodyMetricWire(BaseModel):
+    date: str
+    """The key: one row per date."""
+    weightKg: float | None = None
+    bodyFatPct: float | None = None
+    waistCm: float | None = None
+    chestCm: float | None = None
+    hipCm: float | None = None
+    armCm: float | None = None
+    thighCm: float | None = None
+    neckCm: float | None = None
+    note: str | None = None
+    updatedAt: int
+
+
+class SupplementWire(BaseModel):
+    name: str
+    kind: str = "OTHER"
+    doseAmount: float = 1.0
+    doseUnit: str = "g"
+    kcalPerDose: float = 0.0
+    proteinPerDose: float = 0.0
+    carbsPerDose: float = 0.0
+    fatPerDose: float = 0.0
+    dosesPerDay: int = 1
+    active: bool = True
+
+
+class TargetWire(BaseModel):
+    effectiveFrom: str
+    kcal: float
+    proteinG: float
+    carbsG: float
+    fatG: float
+    source: str = "FORMULA"
+
+
 class SyncPush(BaseModel):
     recipes: list[RecipeWire] = Field(default_factory=list)
     pantryItems: list[PantryItemWire] = Field(default_factory=list)
     shoppingItems: list[ShoppingItemWire] = Field(default_factory=list)
     mealPlanEntries: list[MealPlanEntryWire] = Field(default_factory=list)
+    nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
+    supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
+    bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)
 
 
 class SyncPresent(BaseModel):
     """Every remoteId the phone currently has, per collection — how deletions reach the server.
-    Shopping items ticked off on the phone are left out, so they drop off Claude's list too."""
+    Shopping items ticked off on the phone are left out, so they drop off Claude's list too.
+    Body metrics are listed by date, their key."""
 
     recipes: list[str] = Field(default_factory=list)
     pantryItems: list[str] = Field(default_factory=list)
     shoppingItems: list[str] = Field(default_factory=list)
     mealPlanEntries: list[str] = Field(default_factory=list)
+    nutritionEntries: list[str] | None = None
+    supplementLogs: list[str] | None = None
+    bodyMetrics: list[str] | None = None
+    """None (from app versions before 0.11) means "not reported" — nothing pruned there."""
 
 
 class SyncRequest(BaseModel):
@@ -92,6 +167,10 @@ class SyncRequest(BaseModel):
     push: SyncPush = Field(default_factory=SyncPush)
     present: SyncPresent | None = None
     """Omitted by app versions before 0.10 — then nothing is pruned."""
+    supplements: list[SupplementWire] | None = None
+    """The phone's whole supplement list, replacing the server's copy. None leaves it alone."""
+    targets: list[TargetWire] | None = None
+    """The phone's whole target history, replacing the server's copy. None leaves it alone."""
 
 
 class SyncResponse(BaseModel):
@@ -100,3 +179,6 @@ class SyncResponse(BaseModel):
     pantryItems: list[PantryItemWire] = Field(default_factory=list)
     shoppingItems: list[ShoppingItemWire] = Field(default_factory=list)
     mealPlanEntries: list[MealPlanEntryWire] = Field(default_factory=list)
+    nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
+    supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
+    bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)

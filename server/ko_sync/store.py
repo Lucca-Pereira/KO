@@ -97,6 +97,75 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             servings REAL,
             created_at INTEGER NOT NULL
         );
+
+        -- Gym. Diary lines and supplement ticks can be edited and deleted from Claude, so they
+        -- carry updated_at (last-write-wins) and a `deleted` tombstone the phone applies on pull.
+        CREATE TABLE IF NOT EXISTS nutrition_entries (
+            remote_id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            slot TEXT NOT NULL DEFAULT 'SNACK',
+            source_type TEXT NOT NULL DEFAULT 'QUICK',
+            supplement_name TEXT,
+            label TEXT NOT NULL,
+            grams REAL,
+            servings REAL,
+            kcal REAL NOT NULL DEFAULT 0,
+            protein_g REAL NOT NULL DEFAULT 0,
+            carbs_g REAL NOT NULL DEFAULT 0,
+            fat_g REAL NOT NULL DEFAULT 0,
+            fiber_g REAL,
+            note TEXT,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS nutrition_entries_date ON nutrition_entries (date);
+
+        CREATE TABLE IF NOT EXISTS supplement_logs (
+            remote_id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            supplement_name TEXT NOT NULL,
+            doses REAL NOT NULL DEFAULT 1,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+        );
+
+        -- One row per date, like the phone; remote_id *is* the date.
+        CREATE TABLE IF NOT EXISTS body_metrics (
+            remote_id TEXT PRIMARY KEY,
+            weight_kg REAL,
+            body_fat_pct REAL,
+            waist_cm REAL,
+            chest_cm REAL,
+            hip_cm REAL,
+            arm_cm REAL,
+            thigh_cm REAL,
+            neck_cm REAL,
+            note TEXT,
+            updated_at INTEGER NOT NULL
+        );
+
+        -- Phone-owned snapshots, replaced wholesale on every sync. Claude reads, never writes.
+        CREATE TABLE IF NOT EXISTS supplements (
+            name TEXT PRIMARY KEY COLLATE NOCASE,
+            kind TEXT NOT NULL,
+            dose_amount REAL NOT NULL,
+            dose_unit TEXT NOT NULL,
+            kcal_per_dose REAL NOT NULL,
+            protein_per_dose REAL NOT NULL,
+            carbs_per_dose REAL NOT NULL,
+            fat_per_dose REAL NOT NULL,
+            doses_per_day INTEGER NOT NULL,
+            active INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS nutrition_targets (
+            effective_from TEXT PRIMARY KEY,
+            kcal REAL NOT NULL,
+            protein_g REAL NOT NULL,
+            carbs_g REAL NOT NULL,
+            fat_g REAL NOT NULL,
+            source TEXT NOT NULL
+        );
         """
     )
     conn.commit()
@@ -366,6 +435,9 @@ _PRUNABLE = {
     "pantry_items": "updated_at",
     "shopping_items": "created_at",
     "meal_plan_entries": "created_at",
+    "nutrition_entries": "updated_at",
+    "supplement_logs": "updated_at",
+    "body_metrics": "updated_at",
 }
 
 
@@ -396,3 +468,210 @@ def prune_absent(table: str, present_ids: list[str], seen_before: int) -> int:
         removed = cur.rowcount
         cur.execute("DELETE FROM _present")
         return removed
+
+
+# ---- Gym ----------------------------------------------------------------------------------------
+
+# wire field (camelCase, as on the phone) -> column, per table. `remoteId`/`updatedAt` are implied.
+_ENTRY_FIELDS = {
+    "date": "date",
+    "slot": "slot",
+    "sourceType": "source_type",
+    "supplementName": "supplement_name",
+    "label": "label",
+    "grams": "grams",
+    "servings": "servings",
+    "kcal": "kcal",
+    "proteinG": "protein_g",
+    "carbsG": "carbs_g",
+    "fatG": "fat_g",
+    "fiberG": "fiber_g",
+    "note": "note",
+    "deleted": "deleted",
+}
+_SUPPLEMENT_LOG_FIELDS = {
+    "date": "date",
+    "supplementName": "supplement_name",
+    "doses": "doses",
+    "deleted": "deleted",
+}
+_BODY_FIELDS = {
+    "weightKg": "weight_kg",
+    "bodyFatPct": "body_fat_pct",
+    "waistCm": "waist_cm",
+    "chestCm": "chest_cm",
+    "hipCm": "hip_cm",
+    "armCm": "arm_cm",
+    "thighCm": "thigh_cm",
+    "neckCm": "neck_cm",
+    "note": "note",
+}
+_GYM_TABLES = {
+    "nutrition_entries": ("remoteId", _ENTRY_FIELDS),
+    "supplement_logs": ("remoteId", _SUPPLEMENT_LOG_FIELDS),
+    "body_metrics": ("date", _BODY_FIELDS),  # a body metric's id is its date
+}
+
+
+def _gym_row(table: str, row: sqlite3.Row) -> dict:
+    key_field, fields = _GYM_TABLES[table]
+    out = {key_field: row["remote_id"], "updatedAt": row["updated_at"]}
+    for wire, column in fields.items():
+        value = row[column]
+        out[wire] = bool(value) if wire == "deleted" else value
+    return out
+
+
+def upsert_gym(table: str, wire: dict) -> dict:
+    """Last-write-wins by `updatedAt`, like recipes. Returns the row as stored (the winner)."""
+    key_field, fields = _GYM_TABLES[table]
+    columns = list(fields.values())
+    with _cursor() as cur:
+        cur.execute(f"SELECT * FROM {table} WHERE remote_id = ?", (wire[key_field],))  # noqa: S608
+        existing = cur.fetchone()
+        if existing is not None and existing["updated_at"] >= wire["updatedAt"]:
+            return _gym_row(table, existing)
+        values = [int(wire.get(w) or 0) if w == "deleted" else wire.get(w) for w in fields]
+        cur.execute(
+            f"INSERT INTO {table} (remote_id, {', '.join(columns)}, updated_at) "  # noqa: S608
+            f"VALUES (?, {', '.join('?' for _ in columns)}, ?) "
+            f"ON CONFLICT(remote_id) DO UPDATE SET "
+            + ", ".join(f"{c}=excluded.{c}" for c in [*columns, "updated_at"]),
+            (wire[key_field], *values, wire["updatedAt"]),
+        )
+        cur.execute(f"SELECT * FROM {table} WHERE remote_id = ?", (wire[key_field],))  # noqa: S608
+        return _gym_row(table, cur.fetchone())
+
+
+def newer_than(row: dict | None) -> int:
+    """A timestamp guaranteed to win last-write-wins against `row`. An edit made in the same
+    millisecond as the write it corrects would otherwise lose the tie and silently vanish."""
+    now = now_millis()
+    return max(now, row["updatedAt"] + 1) if row else now
+
+
+def gym_changed_since(table: str, since_millis: int) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(f"SELECT * FROM {table} WHERE updated_at > ?", (since_millis,))  # noqa: S608
+        return [_gym_row(table, r) for r in cur.fetchall()]
+
+
+def gym_by_id(table: str, key: str) -> dict | None:
+    with _cursor() as cur:
+        cur.execute(f"SELECT * FROM {table} WHERE remote_id = ?", (key,))  # noqa: S608
+        row = cur.fetchone()
+        return _gym_row(table, row) if row else None
+
+
+def entries_between(start: str, end: str) -> list[dict]:
+    """Live (non-deleted) diary lines, oldest first."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM nutrition_entries WHERE deleted = 0 AND date BETWEEN ? AND ? "
+            "ORDER BY date, updated_at",
+            (start, end),
+        )
+        return [_gym_row("nutrition_entries", r) for r in cur.fetchall()]
+
+
+def supplement_logs_between(start: str, end: str) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM supplement_logs WHERE deleted = 0 AND date BETWEEN ? AND ? "
+            "ORDER BY date",
+            (start, end),
+        )
+        return [_gym_row("supplement_logs", r) for r in cur.fetchall()]
+
+
+def body_metrics_between(start: str, end: str) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM body_metrics WHERE remote_id BETWEEN ? AND ? ORDER BY remote_id",
+            (start, end),
+        )
+        return [_gym_row("body_metrics", r) for r in cur.fetchall()]
+
+
+# ---- Gym snapshots (phone-owned) ---------------------------------------------------------------
+
+
+def replace_supplements(items: list[dict]) -> None:
+    with _cursor() as cur:
+        cur.execute("DELETE FROM supplements")
+        cur.executemany(
+            """
+            INSERT OR REPLACE INTO supplements (name, kind, dose_amount, dose_unit, kcal_per_dose,
+                protein_per_dose, carbs_per_dose, fat_per_dose, doses_per_day, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    s["name"],
+                    s["kind"],
+                    s["doseAmount"],
+                    s["doseUnit"],
+                    s["kcalPerDose"],
+                    s["proteinPerDose"],
+                    s["carbsPerDose"],
+                    s["fatPerDose"],
+                    s["dosesPerDay"],
+                    int(s["active"]),
+                )
+                for s in items
+            ],
+        )
+
+
+def all_supplements() -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM supplements ORDER BY name COLLATE NOCASE")
+        return [
+            {
+                "name": r["name"],
+                "kind": r["kind"],
+                "doseAmount": r["dose_amount"],
+                "doseUnit": r["dose_unit"],
+                "kcalPerDose": r["kcal_per_dose"],
+                "proteinPerDose": r["protein_per_dose"],
+                "carbsPerDose": r["carbs_per_dose"],
+                "fatPerDose": r["fat_per_dose"],
+                "dosesPerDay": r["doses_per_day"],
+                "active": bool(r["active"]),
+            }
+            for r in cur.fetchall()
+        ]
+
+
+def replace_targets(items: list[dict]) -> None:
+    with _cursor() as cur:
+        cur.execute("DELETE FROM nutrition_targets")
+        cur.executemany(
+            "INSERT OR REPLACE INTO nutrition_targets "
+            "(effective_from, kcal, protein_g, carbs_g, fat_g, source) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (t["effectiveFrom"], t["kcal"], t["proteinG"], t["carbsG"], t["fatG"], t["source"])
+                for t in items
+            ],
+        )
+
+
+def target_on(date: str) -> dict | None:
+    """The target in force on a date: the latest one that started on or before it."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM nutrition_targets WHERE effective_from <= ? "
+            "ORDER BY effective_from DESC LIMIT 1",
+            (date,),
+        )
+        r = cur.fetchone()
+        if r is None:
+            return None
+        return {
+            "effectiveFrom": r["effective_from"],
+            "kcal": r["kcal"],
+            "proteinG": r["protein_g"],
+            "carbsG": r["carbs_g"],
+            "fatG": r["fat_g"],
+            "source": r["source"],
+        }

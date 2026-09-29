@@ -10,6 +10,7 @@ import com.lucca.ko.data.db.MIGRATION_4_5
 import com.lucca.ko.data.db.MIGRATION_5_6
 import com.lucca.ko.data.db.MIGRATION_6_7
 import com.lucca.ko.data.db.MIGRATION_7_8
+import com.lucca.ko.data.db.MIGRATION_8_9
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -488,6 +489,72 @@ class MigrationTest {
                 )
             }.isFailure
             assertTrue("a second row claiming the same remoteId should violate the unique index", threw)
+        }
+    }
+
+    // ---- 8 -> 9: the gym joins sync ------------------------------------------------
+
+    /** Seeds v2, walks to v8, adds one of each gym row, and returns the migrated v9 database. */
+    private fun migrateGymTo9(): SupportSQLiteDatabase {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).use { db ->
+            db.execSQL(
+                "INSERT INTO nutrition_entries (id, date, slot, loggedAt, sourceType, label, " +
+                    "kcal, proteinG, carbsG, fatG) " +
+                    "VALUES (1, '2026-09-28', 'BREAKFAST', 5, 'QUICK', 'Oats', 300, 10, 50, 6)",
+            )
+            db.execSQL(
+                "INSERT INTO supplements (id, name, kind, doseAmount, doseUnit) " +
+                    "VALUES (1, 'Creatine', 'CREATINE', 5, 'g')",
+            )
+            db.execSQL(
+                "INSERT INTO supplement_log (id, date, supplementId, takenAt) " +
+                    "VALUES (1, '2026-09-28', 1, 5)",
+            )
+            db.execSQL(
+                "INSERT INTO body_metrics (id, date, weightKg, recordedAt) " +
+                    "VALUES (1, '2026-09-28', 78.4, 5)",
+            )
+        }
+        return helper.runMigrationsAndValidate(TEST_DB, 9, true, MIGRATION_8_9)
+    }
+
+    @Test
+    fun migrate8To9_validatesAgainstTheEntities() {
+        migrateGymTo9().close()
+    }
+
+    @Test
+    fun migrate8To9_gymRowsSurviveUnsyncedAndUnstamped() {
+        migrateGymTo9().use { db ->
+            assertEquals("Oats", db.text("SELECT label FROM nutrition_entries WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT remoteId FROM nutrition_entries WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT syncedAt FROM nutrition_entries WHERE id = 1"))
+            assertEquals(0L, db.long("SELECT updatedAt FROM nutrition_entries WHERE id = 1"))
+
+            assertEquals(1, db.count("SELECT COUNT(*) FROM supplement_log"))
+            assertNull(db.longOrNull("SELECT remoteId FROM supplement_log WHERE id = 1"))
+
+            assertEquals(1, db.count("SELECT COUNT(*) FROM body_metrics WHERE weightKg = 78.4"))
+            assertNull(db.longOrNull("SELECT syncedAt FROM body_metrics WHERE id = 1"))
+        }
+    }
+
+    @Test
+    fun migrate8To9_diaryRemoteIdIsUnique() {
+        migrateGymTo9().use { db ->
+            db.execSQL("UPDATE nutrition_entries SET remoteId = 'n-1' WHERE id = 1")
+            val threw = runCatching {
+                db.execSQL(
+                    "INSERT INTO nutrition_entries (date, slot, loggedAt, sourceType, label, kcal, " +
+                        "proteinG, carbsG, fatG, remoteId) " +
+                        "VALUES ('2026-09-28', 'LUNCH', 6, 'QUICK', 'x', 1, 1, 1, 1, 'n-1')",
+                )
+            }.isFailure
+            assertTrue("two diary lines claiming one remoteId should violate the unique index", threw)
         }
     }
 }

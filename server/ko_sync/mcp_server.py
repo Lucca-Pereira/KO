@@ -16,28 +16,42 @@ from fastmcp import FastMCP
 
 from . import store
 
+# Hints for the Claude apps' permission prompts: reads need no approval, writes are additive or
+# undoable on the phone, and only the gym tools that remove a log entry are marked destructive.
+READ = {"readOnlyHint": True, "openWorldHint": False}
+WRITE = {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}
+DELETE = {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False}
+
 mcp = FastMCP(
     name="KO Kitchen",
     instructions=(
-        "Tools for lucca's personal kitchen app (KO Kitchen). Use them to suggest meals from what "
-        "is actually in the pantry, plan the week, and keep the shopping list current. Read "
-        "first: get_pantry (stock status IN_STOCK / LOW / OUT), list_recipes / search_recipes, "
-        "get_meal_plan, get_shopping_list. Then write: save_recipe, update_pantry, "
-        "add_to_meal_plan (the recipe must be saved first), add_to_shopping_list (check "
-        "get_shopping_list first to avoid duplicates). Changes appear on the phone next time the "
-        "app syncs (whenever it's opened). This data is as fresh as the phone's last sync. "
-        "Nothing here can delete anything — deleting stays on the phone."
+        "Tools for lucca's personal kitchen and gym app (KO Kitchen). Changes appear on the phone "
+        "next time the app syncs (whenever it's opened); what you read is as fresh as the phone's "
+        "last sync.\n"
+        "KITCHEN — suggest meals from what is actually in the pantry, plan the week, keep the "
+        "shopping list current. Read: get_pantry (IN_STOCK / LOW / OUT), list_recipes / "
+        "search_recipes, get_meal_plan, get_shopping_list. Write: save_recipe, update_pantry, "
+        "add_to_meal_plan (save the recipe first), add_to_shopping_list. Nothing in the kitchen "
+        "can be deleted from here.\n"
+        "GYM — log what the user tells you they ate, took, or weighed, without asking them for "
+        "numbers they didn't give: estimate calories and macros yourself for ordinary foods and "
+        "say it's an estimate. Read: get_day (diary, totals vs target, supplements, weight), "
+        "get_gym_history, get_supplements. Write: log_food, log_supplement (by the name in "
+        "get_supplements — it adds the diary line itself when the supplement has calories, so "
+        "don't also log_food it), log_body_metrics. Fix mistakes with update_food_entry, "
+        "delete_food_entry, unlog_supplement. Pass the user's local date when they say "
+        "'yesterday' etc.; omit it for today. The phone owns targets and supplement definitions."
     ),
 )
 
 
-@mcp.tool
+@mcp.tool(annotations=READ)
 async def get_pantry() -> list[dict]:
     """List everything currently in the pantry, with stock status."""
     return store.all_pantry_items()
 
 
-@mcp.tool
+@mcp.tool(annotations=READ)
 async def list_recipes() -> list[dict]:
     """List every saved recipe in brief: title, tags, times, servings, macros and ingredient
     names. Use search_recipes for a recipe's full ingredients with amounts and its steps."""
@@ -57,7 +71,7 @@ async def list_recipes() -> list[dict]:
     ]
 
 
-@mcp.tool
+@mcp.tool(annotations=READ)
 async def search_recipes(query: str) -> list[dict]:
     """Find saved recipes whose title contains the query (case-insensitive), with full
     ingredients, amounts and steps.
@@ -68,7 +82,7 @@ async def search_recipes(query: str) -> list[dict]:
     return store.search_recipes_by_title(query)
 
 
-@mcp.tool
+@mcp.tool(annotations=READ)
 async def get_meal_plan(start_date: str | None = None, end_date: str | None = None) -> list[dict]:
     """List what's planned, ordered by date. Both bounds are inclusive and optional.
 
@@ -79,13 +93,13 @@ async def get_meal_plan(start_date: str | None = None, end_date: str | None = No
     return store.plan_between(start_date, end_date)
 
 
-@mcp.tool
+@mcp.tool(annotations=READ)
 async def get_shopping_list() -> list[dict]:
     """List what's on the shopping list (items already ticked off on the phone are left out)."""
     return store.all_shopping_items()
 
 
-@mcp.tool
+@mcp.tool(annotations=WRITE)
 async def save_recipe(
     title: str,
     ingredients: list[dict],
@@ -141,7 +155,7 @@ async def save_recipe(
     return store.upsert_recipe(wire)
 
 
-@mcp.tool
+@mcp.tool(annotations=WRITE)
 async def update_pantry(
     name: str,
     status: str | None = None,
@@ -175,7 +189,7 @@ async def update_pantry(
     return store.upsert_pantry_item(wire)
 
 
-@mcp.tool
+@mcp.tool(annotations=WRITE)
 async def add_to_shopping_list(items: list[str]) -> list[dict]:
     """Add one or more items to the shopping list. Items already on it are skipped.
 
@@ -192,7 +206,7 @@ async def add_to_shopping_list(items: list[str]) -> list[dict]:
     return added
 
 
-@mcp.tool
+@mcp.tool(annotations=WRITE)
 async def add_to_meal_plan(
     recipe_title: str, date: str, slot: str, servings: float | None = None
 ) -> dict:
@@ -213,3 +227,7 @@ async def add_to_meal_plan(
             "servings": servings,
         }
     )
+
+
+# Registers the gym tools on the same server; imported last because it imports mcp from here.
+from . import mcp_gym  # noqa: E402, F401

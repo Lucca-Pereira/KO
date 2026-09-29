@@ -66,11 +66,88 @@ data class MealPlanEntryWire(
 )
 
 @Serializable
+data class NutritionEntryWire(
+    val remoteId: String,
+    val date: String,
+    val slot: String = "SNACK",
+    val sourceType: String = "QUICK",
+    /** Resolved to a local supplement by name; the NAS has no supplement ids. */
+    val supplementName: String? = null,
+    val label: String,
+    val grams: Double? = null,
+    val servings: Double? = null,
+    val kcal: Double = 0.0,
+    val proteinG: Double = 0.0,
+    val carbsG: Double = 0.0,
+    val fatG: Double = 0.0,
+    val fiberG: Double? = null,
+    val note: String? = null,
+    /** A tombstone from Claude: delete the local row with this remoteId. */
+    val deleted: Boolean = false,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class SupplementLogWire(
+    val remoteId: String,
+    val date: String,
+    val supplementName: String,
+    val doses: Double = 1.0,
+    val deleted: Boolean = false,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class BodyMetricWire(
+    /** The key, on both sides: one row per date. */
+    val date: String,
+    val weightKg: Double? = null,
+    val bodyFatPct: Double? = null,
+    val waistCm: Double? = null,
+    val chestCm: Double? = null,
+    val hipCm: Double? = null,
+    val armCm: Double? = null,
+    val thighCm: Double? = null,
+    val neckCm: Double? = null,
+    val note: String? = null,
+    val updatedAt: Long,
+)
+
+/** Phone-owned: sent whole every sync so Claude knows what can be ticked off. */
+@Serializable
+data class SupplementWire(
+    val name: String,
+    val kind: String,
+    val doseAmount: Double,
+    val doseUnit: String,
+    val kcalPerDose: Double,
+    val proteinPerDose: Double,
+    val carbsPerDose: Double,
+    val fatPerDose: Double,
+    val dosesPerDay: Int,
+    val active: Boolean,
+)
+
+/** Phone-owned: the target history, so Claude can answer "how much protein is left?". */
+@Serializable
+data class TargetWire(
+    val effectiveFrom: String,
+    val kcal: Double,
+    val proteinG: Double,
+    val carbsG: Double,
+    val fatG: Double,
+    val source: String,
+)
+
+@Serializable
 data class SyncPush(
     val recipes: List<RecipeWire> = emptyList(),
     val pantryItems: List<PantryItemWire> = emptyList(),
     val shoppingItems: List<ShoppingItemWire> = emptyList(),
     val mealPlanEntries: List<MealPlanEntryWire> = emptyList(),
+    val nutritionEntries: List<NutritionEntryWire> = emptyList(),
+    val supplementLogs: List<SupplementLogWire> = emptyList(),
+    val bodyMetrics: List<BodyMetricWire> = emptyList(),
 )
 
 /** Every remoteId the phone currently has, per collection: how deletions made here reach the NAS
@@ -81,13 +158,22 @@ data class SyncPresent(
     val pantryItems: List<String> = emptyList(),
     val shoppingItems: List<String> = emptyList(),
     val mealPlanEntries: List<String> = emptyList(),
+    val nutritionEntries: List<String> = emptyList(),
+    val supplementLogs: List<String> = emptyList(),
+    /** Dates — a body metric's key. */
+    val bodyMetrics: List<String> = emptyList(),
 )
+
+/** The phone-owned gym context the NAS keeps a copy of. */
+data class GymSnapshot(val supplements: List<SupplementWire>, val targets: List<TargetWire>)
 
 @Serializable
 private data class SyncRequest(
     val lastSyncedAt: Long = 0,
     val push: SyncPush = SyncPush(),
     val present: SyncPresent? = null,
+    val supplements: List<SupplementWire>? = null,
+    val targets: List<TargetWire>? = null,
 )
 
 @Serializable
@@ -97,6 +183,9 @@ data class SyncResponse(
     val pantryItems: List<PantryItemWire> = emptyList(),
     val shoppingItems: List<ShoppingItemWire> = emptyList(),
     val mealPlanEntries: List<MealPlanEntryWire> = emptyList(),
+    val nutritionEntries: List<NutritionEntryWire> = emptyList(),
+    val supplementLogs: List<SupplementLogWire> = emptyList(),
+    val bodyMetrics: List<BodyMetricWire> = emptyList(),
 )
 
 class KoSyncException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -119,9 +208,11 @@ class KoSyncClient(private val http: OkHttpClient) {
         push: SyncPush,
         token: String,
         present: SyncPresent? = null,
+        gym: GymSnapshot? = null,
     ): SyncResponse =
         withContext(Dispatchers.IO) {
-            val body = json.encodeToString(SyncRequest.serializer(), SyncRequest(lastSyncedAt, push, present))
+            val payload = SyncRequest(lastSyncedAt, push, present, gym?.supplements, gym?.targets)
+            val body = json.encodeToString(SyncRequest.serializer(), payload)
             val url = baseUrl.trimEnd('/') + "/v1/sync"
             val request = Request.Builder()
                 .url(url)

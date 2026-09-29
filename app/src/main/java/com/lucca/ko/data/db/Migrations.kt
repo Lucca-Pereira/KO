@@ -488,8 +488,39 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/**
+ * v8 -> v9: the gym joins NAS sync, so Claude can log food, supplements and weigh-ins.
+ *
+ * - `nutrition_entries` gets `remoteId`/`syncedAt` like the kitchen tables, plus `updatedAt`
+ *   because a diary line can be edited (on the phone or by Claude) and has to push again.
+ *   Existing rows get `updatedAt = 0`: they predate sync, and `syncedAt IS NULL` already puts
+ *   them in the first push.
+ * - `supplement_log` gets `remoteId`/`syncedAt`. A tick is replaced or removed, never edited.
+ * - `body_metrics` gets only `syncedAt`: one row per date, so the date is the NAS-side key and
+ *   `recordedAt` already says when it last changed.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE nutrition_entries ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE nutrition_entries ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE nutrition_entries ADD COLUMN syncedAt INTEGER")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_nutrition_entries_remoteId " +
+                "ON nutrition_entries (remoteId)",
+        )
+
+        db.execSQL("ALTER TABLE supplement_log ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE supplement_log ADD COLUMN syncedAt INTEGER")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_supplement_log_remoteId ON supplement_log (remoteId)",
+        )
+
+        db.execSQL("ALTER TABLE body_metrics ADD COLUMN syncedAt INTEGER")
+    }
+}
+
 /** Every migration the database knows about, in order. */
 val KO_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-    MIGRATION_7_8,
+    MIGRATION_7_8, MIGRATION_8_9,
 )

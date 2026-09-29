@@ -137,6 +137,27 @@ interface NutritionDao {
     @Query("SELECT * FROM nutrition_entries")
     suspend fun getAll(): List<NutritionEntry>
 
+    // ---- Sync ------------------------------------------------------------------------
+
+    /** Never pushed, or edited since its last successful push. */
+    @Query("SELECT * FROM nutrition_entries WHERE syncedAt IS NULL OR updatedAt > syncedAt")
+    suspend fun pendingPush(): List<NutritionEntry>
+
+    @Query("SELECT * FROM nutrition_entries WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun byRemoteId(remoteId: String): NutritionEntry?
+
+    @Query("SELECT remoteId FROM nutrition_entries WHERE remoteId IS NOT NULL")
+    suspend fun allRemoteIds(): List<String>
+
+    @Query("UPDATE nutrition_entries SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
+    @Query("UPDATE nutrition_entries SET syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSynced(id: Long, syncedAt: Long)
+
+    @Query("DELETE FROM nutrition_entries WHERE remoteId = :remoteId")
+    suspend fun deleteByRemoteId(remoteId: String)
+
     // ---- Targets ---------------------------------------------------------------------
 
     /** The target in force on a date: the most recent one that started on or before it. */
@@ -186,6 +207,16 @@ interface BodyDao {
     @Query("SELECT * FROM body_metrics")
     suspend fun getAll(): List<BodyMetric>
 
+    /** Never pushed, or re-recorded since its last successful push. */
+    @Query("SELECT * FROM body_metrics WHERE syncedAt IS NULL OR recordedAt > syncedAt")
+    suspend fun pendingPush(): List<BodyMetric>
+
+    @Query("SELECT date FROM body_metrics")
+    suspend fun allDates(): List<String>
+
+    @Query("UPDATE body_metrics SET syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampSynced(id: Long, syncedAt: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(metrics: List<BodyMetric>)
 }
@@ -227,6 +258,34 @@ interface SupplementDao {
 
     @Query("DELETE FROM supplement_log WHERE date = :date AND supplementId = :supplementId")
     suspend fun unlog(date: String, supplementId: Long)
+
+    // ---- Sync ------------------------------------------------------------------------
+
+    @Query("SELECT * FROM supplement_log WHERE syncedAt IS NULL")
+    suspend fun pendingPushLogs(): List<SupplementLog>
+
+    @Query("SELECT * FROM supplement_log WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun logByRemoteId(remoteId: String): SupplementLog?
+
+    @Query("SELECT remoteId FROM supplement_log WHERE remoteId IS NOT NULL")
+    suspend fun allLogRemoteIds(): List<String>
+
+    @Query("UPDATE supplement_log SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setLogRemoteId(id: Long, remoteId: String)
+
+    @Query("UPDATE supplement_log SET remoteId = :remoteId, syncedAt = :syncedAt WHERE id = :id")
+    suspend fun stampLogSync(id: Long, remoteId: String, syncedAt: Long)
+
+    @Query("DELETE FROM supplement_log WHERE remoteId = :remoteId")
+    suspend fun deleteLogByRemoteId(remoteId: String)
+
+    /** For a pulled tick: IGNORE rather than [logDose]'s REPLACE, so a clash on (date,
+     *  supplement) with a local tick is reported (-1) and merged instead of overwriting it. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertLogIgnore(log: SupplementLog): Long
+
+    @Query("SELECT * FROM supplements WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun byName(name: String): Supplement?
 
     @Query("SELECT * FROM supplements")
     suspend fun getAllSupplements(): List<Supplement>

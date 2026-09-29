@@ -56,10 +56,25 @@ class BodyRepository(
      */
     suspend fun save(metric: BodyMetric) {
         val existing = bodyDao.onDate(metric.date)
-        bodyDao.upsert(metric.copy(id = existing?.id ?: 0))
+        // A manual save is a new version: clear syncedAt so it pushes even if recordedAt ties.
+        bodyDao.upsert(metric.copy(id = existing?.id ?: 0, syncedAt = null))
+        keepProfileWeightCurrent(metric.date)
+    }
 
+    /**
+     * A weigh-in pulled from the NAS (typically one Claude logged). Same by-date replace and the
+     * same profile update as [save], but it arrives already stamped as synced — pushing it
+     * straight back would be a wasted round trip.
+     */
+    suspend fun saveFromSync(metric: BodyMetric) {
+        val existing = bodyDao.onDate(metric.date)
+        bodyDao.upsert(metric.copy(id = existing?.id ?: 0))
+        keepProfileWeightCurrent(metric.date)
+    }
+
+    private suspend fun keepProfileWeightCurrent(date: String) {
         val latest = bodyDao.latestWeighIn()
-        if (latest != null && latest.date == metric.date) {
+        if (latest != null && latest.date == date) {
             latest.weightKg?.let { profileRepo.setWeight(it, latest.bodyFatPct) }
         }
     }

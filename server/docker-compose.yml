@@ -21,6 +21,8 @@ services:
       KO_GOOGLE_CLIENT_ID: "${KO_GOOGLE_CLIENT_ID:-}"
       KO_GOOGLE_CLIENT_SECRET: "${KO_GOOGLE_CLIENT_SECRET:-}"
       KO_ALLOWED_EMAILS: "${KO_ALLOWED_EMAILS:-}"
+      # "Today" for gym logs Claude makes without a date.
+      KO_TIMEZONE: "${KO_TIMEZONE:-Europe/Madrid}"
     volumes:
       - ko-sync-data:/data
 

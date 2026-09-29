@@ -8,7 +8,9 @@ Tailscale-only bind and dangerous anywhere else, so it is logged loudly at start
 
 from __future__ import annotations
 
+from datetime import datetime
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,6 +43,9 @@ class Settings(BaseSettings):
     allowed_emails: str = ""
     """Comma-separated Google accounts allowed through `/mcp` when Google sign-in is on."""
 
+    timezone: str = "UTC"
+    """IANA zone for "today" when Claude logs without a date, e.g. ``Europe/Madrid``."""
+
     @property
     def auth_enabled(self) -> bool:
         return bool(self.api_token.strip())
@@ -72,3 +77,8 @@ class Settings(BaseSettings):
 @lru_cache
 def settings() -> Settings:
     return Settings()
+
+
+def today() -> str:
+    """Today's ISO date in the configured zone — the phone's own convention for `date`."""
+    return datetime.now(ZoneInfo(settings().timezone)).date().isoformat()

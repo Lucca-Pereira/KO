@@ -139,7 +139,9 @@ class NutritionRepository(
 
     suspend fun deleteEntry(id: Long) = nutritionDao.delete(id)
 
-    suspend fun updateEntry(entry: NutritionEntry) = nutritionDao.update(entry)
+    /** Stamps [NutritionEntry.updatedAt] so the edit goes out on the next sync. */
+    suspend fun updateEntry(entry: NutritionEntry) =
+        nutritionDao.update(entry.copy(updatedAt = System.currentTimeMillis()))
 
     // ---- Foods ------------------------------------------------------------------------
 

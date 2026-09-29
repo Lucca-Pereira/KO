@@ -163,8 +163,9 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
             Text("NAS sync", style = MaterialTheme.typography.titleMedium)
             Text(
                 "If you're running the KO sync service on your own NAS, point the app at it here " +
-                    "and Claude (with the KO connector added) can see your pantry and add " +
-                    "recipes, plans and shopping directly — no file to carry over. Use the " +
+                    "and Claude (with the KO connector added) can see your pantry and diary, " +
+                    "add recipes, plans and shopping, and log food, supplements and weight " +
+                    "for you — no file to carry over. Use the " +
                     "https:// address to sync from anywhere. Syncs when you open the app, or tap " +
                     "Sync now.",
                 style = MaterialTheme.typography.bodySmall,

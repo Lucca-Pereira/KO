@@ -59,6 +59,8 @@ Alongside the file import there's an optional NAS sync service, `server/ko_sync`
 bearer token), and Claude reaches the same store as a claude.ai custom connector at
 `/mcp` (Google sign-in limited to `KO_ALLOWED_EMAILS`, exposed publicly via Tailscale
 Funnel). Design history: `C:\Users\lucca\.claude\plans\i-want-to-start-curried-dragon.md`.
+The gym (food diary, supplement ticks, weigh-ins) syncs too, via `GymSyncRepository`;
+Claude may edit/delete gym entries (server tombstones the phone applies), never kitchen data.
 Deletions reach the NAS through the `present` id lists each sync sends — the server
 prunes only rows the phone has already seen (`store.prune_absent`). Server tests:
 `cd server && .venv/Scripts/python -m pytest` and `ruff check .`.

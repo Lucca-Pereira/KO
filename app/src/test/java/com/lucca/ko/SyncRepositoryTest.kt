@@ -3,22 +3,31 @@ package com.lucca.ko
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.lucca.ko.data.db.KoDatabase
+import com.lucca.ko.data.db.LogSlot
 import com.lucca.ko.data.db.MealSlot
+import com.lucca.ko.data.db.NutritionEntry
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
+import com.lucca.ko.data.remote.sync.BodyMetricWire
 import com.lucca.ko.data.remote.sync.KoSyncClient
 import com.lucca.ko.data.remote.sync.MealPlanEntryWire
+import com.lucca.ko.data.remote.sync.NutritionEntryWire
 import com.lucca.ko.data.remote.sync.PantryItemWire
 import com.lucca.ko.data.remote.sync.RecipeIngredientWire
 import com.lucca.ko.data.remote.sync.RecipeWire
 import com.lucca.ko.data.remote.sync.ShoppingItemWire
+import com.lucca.ko.data.remote.sync.SupplementLogWire
 import com.lucca.ko.data.remote.sync.SyncResponse
+import com.lucca.ko.data.repo.BodyRepository
+import com.lucca.ko.data.repo.GymSyncRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.PantryRepository
 import com.lucca.ko.data.repo.RecipeMerge
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
+import com.lucca.ko.data.repo.SupplementRepository
 import com.lucca.ko.data.repo.SyncOutcome
 import com.lucca.ko.data.repo.SyncRepository
 import com.lucca.ko.domain.IngredientMatcher
@@ -62,6 +71,8 @@ class SyncRepositoryTest {
     private lateinit var pantryRepository: PantryRepository
     private lateinit var shoppingRepository: ShoppingRepository
     private lateinit var mealPlanRepository: MealPlanRepository
+    private lateinit var bodyRepository: BodyRepository
+    private lateinit var supplementRepository: SupplementRepository
     private lateinit var syncSettings: SyncSettingsRepository
     private lateinit var syncRepository: SyncRepository
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -77,6 +88,8 @@ class SyncRepositoryTest {
         pantryRepository = PantryRepository(db.pantryDao(), db.shoppingDao())
         shoppingRepository = ShoppingRepository(db.shoppingDao(), db.pantryDao())
         mealPlanRepository = MealPlanRepository(db.mealPlanDao(), db.recipeDao())
+        bodyRepository = BodyRepository(db.bodyDao(), ProfileRepository(ApplicationProvider.getApplicationContext()))
+        supplementRepository = SupplementRepository(db.supplementDao(), db.nutritionDao())
         val revisionRepository = RevisionRepository(db.revisionDao())
         val recipeMerge = RecipeMerge(recipeRepository, revisionRepository)
 
@@ -97,6 +110,8 @@ class SyncRepositoryTest {
             pantryRepository = pantryRepository,
             shoppingRepository = shoppingRepository,
             mealPlanRepository = mealPlanRepository,
+            gymSyncRepository = GymSyncRepository(db.nutritionDao(), db.supplementDao(), db.bodyDao()),
+            bodyRepository = bodyRepository,
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettings,
             koSyncClient = KoSyncClient(OkHttpClient()),
@@ -330,5 +345,99 @@ class SyncRepositoryTest {
         val outcome = syncRepository.sync() as SyncOutcome.Success
         assertEquals(0, outcome.pulled)
         assertEquals(1, outcome.skipped.size)
+    }
+
+    // ---- Gym ---------------------------------------------------------------------------
+
+    private fun pull(response: SyncResponse) =
+        server.enqueue(MockResponse().setResponseCode(200).setBody(json.encodeToString(SyncResponse.serializer(), response)))
+
+    @Test
+    fun `a diary line is pushed with the supplement list and targets`() = runTest {
+        configure()
+        supplementRepository.seedDefaultsIfEmpty()
+        db.nutritionDao().insert(NutritionEntry(date = "2026-09-29", label = "Oats", kcal = 300.0))
+        pull(SyncResponse(serverTime = 1_000_000))
+
+        val outcome = syncRepository.sync() as SyncOutcome.Success
+        assertEquals(1, outcome.pushed)
+
+        val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val pushed = body.getValue("push").jsonObject.getValue("nutritionEntries").jsonArray.single().jsonObject
+        assertEquals("Oats", pushed.getValue("label").jsonPrimitive.content)
+        val names = body.getValue("supplements").jsonArray.map { it.jsonObject.getValue("name").jsonPrimitive.content }
+        assertEquals(setOf("Creatine", "Whey protein"), names.toSet())
+        val present = body.getValue("present").jsonObject.getValue("nutritionEntries").jsonArray
+        assertEquals(pushed.getValue("remoteId"), present.single())
+        assertNotNull(db.nutritionDao().getAll().single().syncedAt)
+    }
+
+    @Test
+    fun `a diary line Claude logged is created, and its tombstone deletes it`() = runTest {
+        configure()
+        val line = NutritionEntryWire(
+            remoteId = "claude-1", date = "2026-09-29", slot = "BREAKFAST", label = "3 eggs",
+            kcal = 234.0, proteinG = 19.0, updatedAt = 900_000,
+        )
+        pull(SyncResponse(serverTime = 1_000_000, nutritionEntries = listOf(line)))
+        syncRepository.sync() as SyncOutcome.Success
+
+        val created = db.nutritionDao().getAll().single()
+        assertEquals("3 eggs", created.label)
+        assertEquals(LogSlot.BREAKFAST, created.slot)
+        // Arrived stamped: the next sync must not push it straight back.
+        assertTrue(db.nutritionDao().pendingPush().isEmpty())
+
+        pull(SyncResponse(serverTime = 2_000_000, nutritionEntries = listOf(line.copy(deleted = true, updatedAt = 1_500_000))))
+        syncRepository.sync() as SyncOutcome.Success
+        assertTrue(db.nutritionDao().getAll().isEmpty())
+    }
+
+    @Test
+    fun `a supplement Claude ticked replaces the local diary line rather than doubling it`() = runTest {
+        configure()
+        supplementRepository.seedDefaultsIfEmpty()
+        val whey = db.supplementDao().byName("Whey protein")!!
+        supplementRepository.logDose(whey, LocalDate.parse("2026-09-29")) // ticked on the phone
+        pull(SyncResponse(serverTime = 1_000_000)) // first sync pushes the phone's tick
+        syncRepository.sync() as SyncOutcome.Success
+        server.takeRequest()
+
+        pull(
+            SyncResponse(
+                serverTime = 2_000_000,
+                supplementLogs = listOf(
+                    SupplementLogWire("claude-log", "2026-09-29", "Whey protein", doses = 2.0, updatedAt = 1_500_000),
+                ),
+                nutritionEntries = listOf(
+                    NutritionEntryWire(
+                        remoteId = "claude-line", date = "2026-09-29", slot = "SUPPLEMENT",
+                        sourceType = "SUPPLEMENT", supplementName = "Whey protein", label = "Whey protein",
+                        servings = 2.0, kcal = 224.0, proteinG = 48.0, updatedAt = 1_500_000,
+                    ),
+                ),
+            ),
+        )
+        val outcome = syncRepository.sync() as SyncOutcome.Success
+        assertTrue(outcome.skipped.toString(), outcome.skipped.isEmpty())
+
+        val lines = db.nutritionDao().entriesOn("2026-09-29")
+        assertEquals(listOf(48.0), lines.map { it.proteinG })
+        assertEquals("claude-log", db.supplementDao().entryFor("2026-09-29", whey.id)!!.remoteId)
+    }
+
+    @Test
+    fun `a weigh-in Claude logged lands by date and isn't pushed back`() = runTest {
+        configure()
+        pull(
+            SyncResponse(
+                serverTime = 1_000_000,
+                bodyMetrics = listOf(BodyMetricWire(date = "2026-09-29", weightKg = 78.4, updatedAt = 900_000)),
+            ),
+        )
+        syncRepository.sync() as SyncOutcome.Success
+
+        assertEquals(78.4, db.bodyDao().onDate("2026-09-29")!!.weightKg!!, 0.0)
+        assertTrue(db.bodyDao().pendingPush().isEmpty())
     }
 }

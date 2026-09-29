@@ -10,7 +10,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir \
       "fastapi>=0.115" "uvicorn[standard]>=0.32" "pydantic>=2.9" "pydantic-settings>=2.6" \
-      "fastmcp>=4.0,<5"
+      "fastmcp>=4.0,<5" "tzdata>=2024.1"
 
 COPY ko_sync ./ko_sync
 

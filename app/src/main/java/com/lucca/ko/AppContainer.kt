@@ -19,6 +19,7 @@ import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SupplementRepository
+import com.lucca.ko.data.repo.GymSyncRepository
 import com.lucca.ko.data.repo.SyncRepository
 import com.lucca.ko.data.seed.FoodSeedLoader
 import java.util.concurrent.TimeUnit
@@ -90,6 +91,12 @@ class AppContainer(context: Context) {
             pantryRepository = pantryRepository,
             shoppingRepository = shoppingRepository,
             mealPlanRepository = mealPlanRepository,
+            gymSyncRepository = GymSyncRepository(
+                database.nutritionDao(),
+                database.supplementDao(),
+                database.bodyDao(),
+            ),
+            bodyRepository = bodyRepository,
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettingsRepository,
             koSyncClient = koSyncClient,
