@@ -104,6 +104,23 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             created_at INTEGER NOT NULL
         );
 
+        -- Kitchen rows Claude deleted. The phone applies these on its next pull (the reverse of
+        -- `prune_absent`, which handles deletions made on the phone).
+        CREATE TABLE IF NOT EXISTS tombstones (
+            collection TEXT NOT NULL,
+            remote_id TEXT NOT NULL,
+            deleted_at INTEGER NOT NULL,
+            PRIMARY KEY (collection, remote_id)
+        );
+
+        -- How the phone's meal-plan screen is laid out; a single row (id = 1), last-write-wins.
+        CREATE TABLE IF NOT EXISTS plan_view (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            weeks INTEGER NOT NULL DEFAULT 1,
+            calendar INTEGER NOT NULL DEFAULT 1,
+            updated_at INTEGER NOT NULL
+        );
+
         -- Gym. Diary lines and supplement ticks can be edited and deleted from Claude, so they
         -- carry updated_at (last-write-wins) and a `deleted` tombstone the phone applies on pull.
         CREATE TABLE IF NOT EXISTS nutrition_entries (
@@ -431,6 +448,89 @@ def plan_between(start: str | None, end: str | None) -> list[dict]:
             (start, start, end, end),
         )
         return [_row_to_plan(r) for r in cur.fetchall()]
+
+
+# ---- Deletions made from Claude ----------------------------------------------------------------
+
+# Collection name on the wire -> table. Only kitchen collections; gym rows carry their own
+# `deleted` flag instead.
+_KITCHEN_TABLES = {
+    "recipes": "recipes",
+    "pantryItems": "pantry_items",
+    "shoppingItems": "shopping_items",
+    "mealPlanEntries": "meal_plan_entries",
+}
+
+
+def delete_kitchen_row(collection: str, remote_id: str) -> bool:
+    """Removes a row and records a tombstone so the phone drops it on its next sync."""
+    table = _KITCHEN_TABLES[collection]
+    with _cursor() as cur:
+        cur.execute(f"DELETE FROM {table} WHERE remote_id = ?", (remote_id,))  # noqa: S608
+        removed = cur.rowcount > 0
+        if removed:
+            cur.execute(
+                "INSERT OR REPLACE INTO tombstones (collection, remote_id, deleted_at) "
+                "VALUES (?, ?, ?)",
+                (collection, remote_id, now_millis()),
+            )
+        return removed
+
+
+def deleted_since(since_millis: int) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {name: [] for name in _KITCHEN_TABLES}
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT collection, remote_id FROM tombstones WHERE deleted_at > ?", (since_millis,)
+        )
+        for r in cur.fetchall():
+            out[r["collection"]].append(r["remote_id"])
+    return out
+
+
+def get_plan_entry(remote_id: str) -> dict | None:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM meal_plan_entries WHERE remote_id = ?", (remote_id,))
+        row = cur.fetchone()
+        return _row_to_plan(row) if row else None
+
+
+def find_shopping_item_by_name(name: str) -> dict | None:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM shopping_items WHERE name = ? COLLATE NOCASE", (name.strip(),))
+        row = cur.fetchone()
+        return _row_to_shopping(row) if row else None
+
+
+# ---- Meal-plan layout --------------------------------------------------------------------------
+
+
+def get_plan_view() -> dict:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM plan_view WHERE id = 1")
+        row = cur.fetchone()
+    if row is None:
+        return {"weeks": 1, "calendar": True, "updatedAt": 0}
+    return {
+        "weeks": row["weeks"],
+        "calendar": bool(row["calendar"]),
+        "updatedAt": row["updated_at"],
+    }
+
+
+def upsert_plan_view(wire: dict) -> dict:
+    """Last-write-wins by `updatedAt`. Returns the stored winner."""
+    current = get_plan_view()
+    if current["updatedAt"] >= wire["updatedAt"]:
+        return current
+    with _cursor() as cur:
+        cur.execute(
+            "INSERT INTO plan_view (id, weeks, calendar, updated_at) VALUES (1, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET weeks=excluded.weeks, calendar=excluded.calendar, "
+            "updated_at=excluded.updated_at",
+            (wire["weeks"], int(wire["calendar"]), wire["updatedAt"]),
+        )
+    return get_plan_view()
 
 
 # ---- Phone-side deletions ----------------------------------------------------------------------

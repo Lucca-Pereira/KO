@@ -139,6 +139,19 @@ data class TargetWire(
     val source: String,
 )
 
+/** How the meal-plan screen is laid out. Last-write-wins on [updatedAt], phone or Claude. */
+@Serializable
+data class PlanViewWire(val weeks: Int = 1, val calendar: Boolean = true, val updatedAt: Long)
+
+/** remoteIds Claude deleted, per kitchen collection: the phone drops them on pull. */
+@Serializable
+data class DeletedWire(
+    val recipes: List<String> = emptyList(),
+    val pantryItems: List<String> = emptyList(),
+    val shoppingItems: List<String> = emptyList(),
+    val mealPlanEntries: List<String> = emptyList(),
+)
+
 @Serializable
 data class SyncPush(
     val recipes: List<RecipeWire> = emptyList(),
@@ -148,6 +161,7 @@ data class SyncPush(
     val nutritionEntries: List<NutritionEntryWire> = emptyList(),
     val supplementLogs: List<SupplementLogWire> = emptyList(),
     val bodyMetrics: List<BodyMetricWire> = emptyList(),
+    val planView: PlanViewWire? = null,
 )
 
 /** Every remoteId the phone currently has, per collection: how deletions made here reach the NAS
@@ -186,6 +200,8 @@ data class SyncResponse(
     val nutritionEntries: List<NutritionEntryWire> = emptyList(),
     val supplementLogs: List<SupplementLogWire> = emptyList(),
     val bodyMetrics: List<BodyMetricWire> = emptyList(),
+    val planView: PlanViewWire? = null,
+    val deleted: DeletedWire = DeletedWire(),
 )
 
 class KoSyncException(message: String, cause: Throwable? = null) : Exception(message, cause)

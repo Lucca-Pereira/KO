@@ -37,6 +37,9 @@ async def sync(req: SyncRequest) -> SyncResponse:
     for metric in req.push.bodyMetrics:
         store.upsert_gym("body_metrics", metric.model_dump())
 
+    if req.push.planView is not None:
+        store.upsert_plan_view(req.push.planView.model_dump())
+
     if req.supplements is not None:
         store.replace_supplements([s.model_dump() for s in req.supplements])
     if req.targets is not None:
@@ -57,6 +60,7 @@ async def sync(req: SyncRequest) -> SyncResponse:
             store.prune_absent("body_metrics", present.bodyMetrics, since)
 
     server_time = store.now_millis()
+    view = store.get_plan_view()
     return SyncResponse(
         serverTime=server_time,
         recipes=store.recipes_changed_since(req.lastSyncedAt),
@@ -66,6 +70,8 @@ async def sync(req: SyncRequest) -> SyncResponse:
         nutritionEntries=store.gym_changed_since("nutrition_entries", req.lastSyncedAt),
         supplementLogs=store.gym_changed_since("supplement_logs", req.lastSyncedAt),
         bodyMetrics=store.gym_changed_since("body_metrics", req.lastSyncedAt),
+        planView=view if view["updatedAt"] > req.lastSyncedAt else None,
+        deleted=store.deleted_since(req.lastSyncedAt),
     )
 
 

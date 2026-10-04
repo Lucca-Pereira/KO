@@ -6,10 +6,13 @@ import com.lucca.ko.data.db.Recipe
 import com.lucca.ko.data.db.RecipeSource
 import com.lucca.ko.data.db.ShoppingListItem
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.data.prefs.PlanView
+import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.sync.KoSyncClient
 import com.lucca.ko.data.remote.sync.MealPlanEntryWire
 import com.lucca.ko.data.remote.sync.PantryItemWire
+import com.lucca.ko.data.remote.sync.PlanViewWire
 import com.lucca.ko.data.remote.sync.RecipeIngredientWire
 import com.lucca.ko.data.remote.sync.RecipeStepWire
 import com.lucca.ko.data.remote.sync.RecipeWire
@@ -50,6 +53,7 @@ class SyncRepository(
     private val recipeMerge: RecipeMerge,
     private val syncSettingsRepository: SyncSettingsRepository,
     private val koSyncClient: KoSyncClient,
+    private val planViewRepository: PlanViewRepository,
 ) {
     suspend fun sync(): SyncOutcome {
         val nasUrl = syncSettingsRepository.currentNasUrl()
@@ -82,6 +86,10 @@ class SyncRepository(
 
         val gym = gymSyncRepository.pendingPush()
 
+        // A never-changed layout (updatedAt 0) isn't sent: it must not clobber Claude's choice.
+        val planView = planViewRepository.current().takeIf { it.updatedAt > 0 }
+            ?.let { PlanViewWire(it.weeks, it.calendar, it.updatedAt) }
+
         // Read after the pending rows above have had their remoteIds assigned, so everything being
         // pushed this round is also listed as present.
         val present = SyncPresent(
@@ -100,7 +108,7 @@ class SyncRepository(
                 lastSyncedAt,
                 SyncPush(
                     recipeWires, pantryWires, shoppingWires, planWires,
-                    gym.entryWires, gym.logWires, gym.bodyWires,
+                    gym.entryWires, gym.logWires, gym.bodyWires, planView,
                 ),
                 token,
                 present,
@@ -162,6 +170,33 @@ class SyncRepository(
             runCatching { bodyRepository.saveFromSync(wire.toMetric(response.serverTime)) }
                 .onSuccess { pulled++ }
                 .onFailure { skipped += "weigh-in ${wire.date}: ${it.message}" }
+        }
+
+        response.planView?.let {
+            planViewRepository.applyFromSync(PlanView(it.weeks, it.calendar, it.updatedAt))
+        }
+
+        // Deletions Claude made. After the upserts, so a row both edited and deleted ends deleted.
+        val gone = response.deleted
+        gone.recipes.forEach { id ->
+            runCatching { recipeRepository.recipeByRemoteId(id)?.let { recipeRepository.deleteRecipe(it.id) } }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "delete recipe: ${it.message}" }
+        }
+        gone.pantryItems.forEach { id ->
+            runCatching { pantryRepository.pantryByRemoteId(id)?.let { pantryRepository.deletePantryItem(it.id) } }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "delete pantry item: ${it.message}" }
+        }
+        gone.shoppingItems.forEach { id ->
+            runCatching { shoppingRepository.shoppingByRemoteId(id)?.let { shoppingRepository.deleteShoppingItem(it.id) } }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "delete shopping item: ${it.message}" }
+        }
+        gone.mealPlanEntries.forEach { id ->
+            runCatching { mealPlanRepository.planByRemoteId(id)?.let { mealPlanRepository.removePlanEntry(it.id) } }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "delete planned meal: ${it.message}" }
         }
 
         // Only after the pull is fully applied do we mark what we pushed as synced — a failure
