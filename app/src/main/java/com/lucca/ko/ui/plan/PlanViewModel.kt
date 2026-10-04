@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.relations.PlannedRecipe
+import com.lucca.ko.data.prefs.PlanView
+import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.ui.koFactory
 import java.time.DayOfWeek
@@ -13,6 +15,7 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -32,6 +35,10 @@ data class PlanUiState(
     val rangeLabel: String = "",
     val isCurrentWeek: Boolean = true,
     val days: List<DayPlan> = emptyList(),
+    /** 1 or 2: how many weeks the screen shows at once. */
+    val weeks: Int = 1,
+    /** False pins the screen to the current week(s), with no paging to others. */
+    val calendar: Boolean = true,
 )
 
 fun MealSlot.label(): String = when (this) {
@@ -48,19 +55,26 @@ private fun shortDate(date: LocalDate): String =
     "${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())}"
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class PlanViewModel(private val repo: MealPlanRepository) : ViewModel() {
+class PlanViewModel(
+    private val repo: MealPlanRepository,
+    private val planViewRepository: PlanViewRepository,
+) : ViewModel() {
 
     private val weekStart = MutableStateFlow(mondayOf(LocalDate.now()))
 
-    val state = weekStart
-        .flatMapLatest { start ->
-            repo.weekPlan(start).map { planned -> buildState(start, planned) }
+    val state = combine(weekStart, planViewRepository.view) { start, view ->
+        // Without the calendar there is nothing to page to, so the screen is always this week.
+        (if (view.calendar) start else mondayOf(LocalDate.now())) to view
+    }
+        .flatMapLatest { (start, view) ->
+            repo.weekPlan(start, view.weeks).map { planned -> buildState(start, view, planned) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanUiState())
 
-    private fun buildState(start: LocalDate, planned: List<PlannedRecipe>): PlanUiState {
+    private fun buildState(start: LocalDate, view: PlanView, planned: List<PlannedRecipe>): PlanUiState {
         val today = LocalDate.now()
-        val days = (0..6L).map { offset ->
+        val spanDays = 7L * view.weeks
+        val days = (0 until spanDays).map { offset ->
             val date = start.plusDays(offset)
             val forDay = planned.filter { it.entry.date == date.toString() }
             DayPlan(
@@ -75,15 +89,27 @@ class PlanViewModel(private val repo: MealPlanRepository) : ViewModel() {
         }
         return PlanUiState(
             weekStart = start,
-            rangeLabel = "${shortDate(start)} – ${shortDate(start.plusDays(6))}",
+            rangeLabel = "${shortDate(start)} – ${shortDate(start.plusDays(spanDays - 1))}",
             isCurrentWeek = start == mondayOf(today),
             days = days,
+            weeks = view.weeks,
+            calendar = view.calendar,
         )
     }
 
-    fun nextWeek() { weekStart.value = weekStart.value.plusWeeks(1) }
-    fun prevWeek() { weekStart.value = weekStart.value.minusWeeks(1) }
+    // Paging moves by the whole span, so a biweekly plan steps a fortnight at a time.
+    fun nextWeek() { weekStart.value = weekStart.value.plusWeeks(state.value.weeks.toLong()) }
+    fun prevWeek() { weekStart.value = weekStart.value.minusWeeks(state.value.weeks.toLong()) }
     fun goToday() { weekStart.value = mondayOf(LocalDate.now()) }
+
+    fun setWeeks(weeks: Int) {
+        viewModelScope.launch { planViewRepository.set(weeks = weeks) }
+    }
+
+    fun setCalendar(calendar: Boolean) {
+        goToday()
+        viewModelScope.launch { planViewRepository.set(calendar = calendar) }
+    }
 
     /** Removes the planned meal only — the recipe stays in the library. */
     fun removeEntry(id: Long) = viewModelScope.launch { repo.removePlanEntry(id) }
@@ -98,6 +124,6 @@ class PlanViewModel(private val repo: MealPlanRepository) : ViewModel() {
         viewModelScope.launch { repo.move(id, date, slot) }
 
     companion object {
-        val Factory = koFactory { PlanViewModel(it.mealPlanRepository) }
+        val Factory = koFactory { PlanViewModel(it.mealPlanRepository, it.planViewRepository) }
     }
 }

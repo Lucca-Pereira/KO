@@ -76,6 +76,26 @@ fun PlanScreen(
                 title = "Meal plan",
                 actions = {
                     if (!state.isCurrentWeek) TextButton(onClick = vm::goToday) { Text("Today") }
+                    var layoutMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { layoutMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Plan layout")
+                    }
+                    DropdownMenu(expanded = layoutMenu, onDismissRequest = { layoutMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (state.weeks == 1) "✓ One week" else "One week") },
+                            onClick = { layoutMenu = false; vm.setWeeks(1) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (state.weeks == 2) "✓ Two weeks" else "Two weeks") },
+                            onClick = { layoutMenu = false; vm.setWeeks(2) },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(if (state.calendar) "✓ Browse other weeks" else "Browse other weeks")
+                            },
+                            onClick = { layoutMenu = false; vm.setCalendar(!state.calendar) },
+                        )
+                    }
                 },
             )
         },
@@ -85,17 +105,21 @@ fun PlanScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = vm::prevWeek) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous week")
+                if (state.calendar) {
+                    IconButton(onClick = vm::prevWeek) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
+                    }
                 }
                 Text(
                     state.rangeLabel,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).padding(vertical = if (state.calendar) 0.dp else 12.dp),
                     textAlign = TextAlign.Center,
                 )
-                IconButton(onClick = vm::nextWeek) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next week")
+                if (state.calendar) {
+                    IconButton(onClick = vm::nextWeek) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
+                    }
                 }
             }
 

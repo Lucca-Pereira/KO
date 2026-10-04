@@ -7,13 +7,16 @@ import com.lucca.ko.data.db.LogSlot
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.NutritionEntry
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.sync.BodyMetricWire
+import com.lucca.ko.data.remote.sync.DeletedWire
 import com.lucca.ko.data.remote.sync.KoSyncClient
 import com.lucca.ko.data.remote.sync.MealPlanEntryWire
 import com.lucca.ko.data.remote.sync.NutritionEntryWire
 import com.lucca.ko.data.remote.sync.PantryItemWire
+import com.lucca.ko.data.remote.sync.PlanViewWire
 import com.lucca.ko.data.remote.sync.RecipeIngredientWire
 import com.lucca.ko.data.remote.sync.RecipeWire
 import com.lucca.ko.data.remote.sync.ShoppingItemWire
@@ -74,6 +77,7 @@ class SyncRepositoryTest {
     private lateinit var bodyRepository: BodyRepository
     private lateinit var supplementRepository: SupplementRepository
     private lateinit var syncSettings: SyncSettingsRepository
+    private lateinit var planViewRepository: PlanViewRepository
     private lateinit var syncRepository: SyncRepository
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -104,6 +108,8 @@ class SyncRepositoryTest {
             syncSettings.setToken(null)
             syncSettings.setLastSyncedAt(0)
         }
+        planViewRepository = PlanViewRepository(ApplicationProvider.getApplicationContext())
+        runBlocking { planViewRepository.applyFromSync(com.lucca.ko.data.prefs.PlanView()) }
 
         syncRepository = SyncRepository(
             recipeRepository = recipeRepository,
@@ -115,6 +121,7 @@ class SyncRepositoryTest {
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettings,
             koSyncClient = KoSyncClient(OkHttpClient()),
+            planViewRepository = planViewRepository,
         )
     }
 
@@ -439,5 +446,63 @@ class SyncRepositoryTest {
 
         assertEquals(78.4, db.bodyDao().onDate("2026-09-29")!!.weightKg!!, 0.0)
         assertTrue(db.bodyDao().pendingPush().isEmpty())
+    }
+
+    @Test
+    fun `a pulled tombstone deletes the pantry item, shopping item and planned meal`() = runTest {
+        configure()
+        val pid = pantryRepository.savePantryItem(
+            id = null, name = "Onion", category = "Produce", status = StockStatus.IN_STOCK,
+            quantity = null, note = null,
+        )!!
+        val p = pantryRepository.byId(pid)!!
+        pantryRepository.stampSync(pid, "p-remote", p.updatedAt, p.updatedAt + 1)
+        pantryRepository.savePantryItem(
+            id = null, name = "Garlic", category = "Produce", status = StockStatus.IN_STOCK,
+            quantity = null, note = null,
+        )
+
+        val deleted = DeletedWire(pantryItems = listOf("p-remote", "never-seen"))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                json.encodeToString(SyncResponse.serializer(), SyncResponse(serverTime = 6000, deleted = deleted)),
+            ),
+        )
+
+        val outcome = syncRepository.sync() as SyncOutcome.Success
+        assertTrue(outcome.skipped.isEmpty())
+        assertEquals(listOf("Garlic"), pantryRepository.snapshot().map { it.name })
+    }
+
+    @Test
+    fun `a plan view Claude set is applied, and a phone change is pushed`() = runTest {
+        configure()
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                json.encodeToString(
+                    SyncResponse.serializer(),
+                    SyncResponse(serverTime = 6000, planView = PlanViewWire(weeks = 2, calendar = false, updatedAt = 5000)),
+                ),
+            ),
+        )
+        syncRepository.sync()
+        server.takeRequest()
+        val applied = planViewRepository.current()
+        assertEquals(2, applied.weeks)
+        assertEquals(false, applied.calendar)
+
+        planViewRepository.set(weeks = 1)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse(7000)))
+        syncRepository.sync()
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"planView\":{\"weeks\":1,\"calendar\":false"))
+    }
+
+    @Test
+    fun `an unchanged plan view isn't pushed, so it can't overwrite Claude's choice`() = runTest {
+        configure()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse()))
+        syncRepository.sync()
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"planView\":null"))
     }
 }

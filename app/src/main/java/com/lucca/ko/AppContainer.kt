@@ -5,6 +5,7 @@ import com.lucca.ko.data.BackupRepository
 import com.lucca.ko.data.db.KoDatabase
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SettingsRepository
+import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.OpenFoodFactsClient
 import com.lucca.ko.data.remote.sync.KoSyncClient
@@ -85,6 +86,8 @@ class AppContainer(context: Context) {
 
     private val koSyncClient: KoSyncClient by lazy { KoSyncClient(httpClient) }
 
+    val planViewRepository: PlanViewRepository by lazy { PlanViewRepository(appContext) }
+
     val syncRepository: SyncRepository by lazy {
         SyncRepository(
             recipeRepository = recipeRepository,
@@ -100,6 +103,7 @@ class AppContainer(context: Context) {
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettingsRepository,
             koSyncClient = koSyncClient,
+            planViewRepository = planViewRepository,
         )
     }
 

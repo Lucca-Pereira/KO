@@ -6,13 +6,18 @@ deliberately, with the phone's `SyncRepository` reconciling it on foreground). E
 goes through the same `store.py` functions the phone's own sync push uses, so a recipe Claude
 saves shows up in the phone's next pull exactly like one it wrote itself.
 
-There is still one boundary: nothing here deletes. Deleting stays phone-local, consistent with
-the rest of the app's "propose additions, review the risky bit" pattern.
+Kitchen deletions go out as tombstones (`store.delete_kitchen_row`) that the phone applies on its
+next pull, like the gym's `deleted` flag; the delete tools are marked destructive so the Claude
+apps ask before running them. The phone's own deletions reach this store the other way, through
+the `present` id lists (`store.prune_absent`).
 """
 
 from __future__ import annotations
 
+from datetime import date as Date
+
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 from . import store
 
@@ -227,6 +232,130 @@ async def add_to_meal_plan(
             "servings": servings,
         }
     )
+
+
+@mcp.tool(annotations=DELETE)
+async def delete_recipe(recipe: str) -> dict:
+    """Permanently delete a saved recipe. Meals already planned with it stay on the plan under
+    its old title; use remove_from_meal_plan / clear_meal_plan to drop those too.
+
+    Args:
+        recipe: The recipe's remoteId (from list_recipes) or its exact title.
+    """
+    found = _find_recipe(recipe)
+    store.delete_kitchen_row("recipes", found["remoteId"])
+    return {"deleted": found["remoteId"], "title": found["title"]}
+
+
+@mcp.tool(annotations=DELETE)
+async def delete_pantry_item(name: str) -> dict:
+    """Remove an item from the pantry entirely. To record that it ran out, use update_pantry
+    with status OUT instead.
+
+    Args:
+        name: The pantry item's name (case-insensitive, exact).
+    """
+    found = store.find_pantry_item_by_name(name.strip())
+    if found is None:
+        raise ToolError(f"No pantry item called {name!r}. get_pantry lists them.")
+    store.delete_kitchen_row("pantryItems", found["remoteId"])
+    return {"deleted": found["remoteId"], "name": found["name"]}
+
+
+@mcp.tool(annotations=DELETE)
+async def remove_from_shopping_list(items: list[str]) -> dict:
+    """Remove one or more items from the shopping list.
+
+    Args:
+        items: Item names exactly as get_shopping_list shows them (case-insensitive).
+    """
+    removed, missing = [], []
+    for name in items:
+        found = store.find_shopping_item_by_name(name)
+        if found is None:
+            missing.append(name)
+        else:
+            store.delete_kitchen_row("shoppingItems", found["remoteId"])
+            removed.append(found["name"])
+    return {"removed": removed, "notOnList": missing}
+
+
+@mcp.tool(annotations=DELETE)
+async def remove_from_meal_plan(remote_id: str) -> dict:
+    """Remove one planned meal. The recipe itself stays saved.
+
+    Args:
+        remote_id: The planned entry's remoteId, from get_meal_plan.
+    """
+    entry = store.get_plan_entry(remote_id)
+    if entry is None:
+        raise ToolError(f"No planned meal {remote_id!r}. get_meal_plan lists the current ones.")
+    store.delete_kitchen_row("mealPlanEntries", remote_id)
+    return {"deleted": remote_id, "recipeTitle": entry["recipeTitle"], "date": entry["date"]}
+
+
+@mcp.tool(annotations=DELETE)
+async def clear_meal_plan(start_date: str, end_date: str) -> dict:
+    """Remove every planned meal in a date range (both ends inclusive). Recipes stay saved.
+
+    Args:
+        start_date: ISO date, e.g. "2026-10-05".
+        end_date: ISO date, e.g. "2026-10-11".
+    """
+    start, end = _iso(start_date), _iso(end_date)
+    if start > end:
+        raise ToolError("start_date is after end_date")
+    entries = store.plan_between(start, end)
+    for entry in entries:
+        store.delete_kitchen_row("mealPlanEntries", entry["remoteId"])
+    return {"removed": len(entries), "from": start, "to": end}
+
+
+@mcp.tool(annotations=READ)
+async def get_plan_view() -> dict:
+    """How the phone's meal-plan screen is laid out: `weeks` (1 or 2) and `calendar` (true =
+    the user can page through any week; false = it just shows the current week(s))."""
+    view = store.get_plan_view()
+    return {"weeks": view["weeks"], "calendar": view["calendar"]}
+
+
+@mcp.tool(annotations=WRITE)
+async def set_plan_view(weeks: int | None = None, calendar: bool | None = None) -> dict:
+    """Change how the phone's meal-plan screen is laid out. Only what you pass changes.
+
+    Args:
+        weeks: 1 for a single week, 2 for a two-week (biweekly) plan.
+        calendar: False to show only the current week(s) with no paging to other weeks; True to
+            let the user browse forwards and back.
+    """
+    if weeks is None and calendar is None:
+        raise ToolError("Pass weeks and/or calendar.")
+    if weeks is not None and weeks not in (1, 2):
+        raise ToolError("weeks must be 1 or 2.")
+    current = store.get_plan_view()
+    updated = store.upsert_plan_view(
+        {
+            "weeks": weeks if weeks is not None else current["weeks"],
+            "calendar": calendar if calendar is not None else current["calendar"],
+            "updatedAt": max(store.now_millis(), current["updatedAt"] + 1),
+        }
+    )
+    return {"weeks": updated["weeks"], "calendar": updated["calendar"]}
+
+
+def _iso(value: str) -> str:
+    try:
+        return Date.fromisoformat(value).isoformat()
+    except ValueError as e:
+        raise ToolError(f"dates must be ISO like 2026-10-05, got {value!r}") from e
+
+
+def _find_recipe(ref: str) -> dict:
+    ref = ref.strip()
+    for r in store.all_recipes():
+        if r["remoteId"] == ref or r["title"].lower() == ref.lower():
+            return r
+    raise ToolError(f"No recipe {ref!r}. list_recipes shows what's saved.")
 
 
 # Registers the gym tools on the same server; imported last because it imports mcp from here.

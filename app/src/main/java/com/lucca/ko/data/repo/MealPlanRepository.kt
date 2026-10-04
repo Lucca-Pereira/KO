@@ -17,8 +17,9 @@ class MealPlanRepository(
     private val mealPlanDao: MealPlanDao,
     private val recipeDao: RecipeDao,
 ) {
-    fun weekPlan(monday: LocalDate): Flow<List<PlannedRecipe>> =
-        mealPlanDao.observeRange(monday.toString(), monday.plusDays(6).toString())
+    /** [weeks] consecutive weeks from [monday]: 1 for the usual week, 2 for a biweekly plan. */
+    fun weekPlan(monday: LocalDate, weeks: Int = 1): Flow<List<PlannedRecipe>> =
+        mealPlanDao.observeRange(monday.toString(), monday.plusDays(7L * weeks - 1).toString())
 
     /** How many planned meals point at this recipe — shown in the delete confirmation. */
     suspend fun planCountForRecipe(recipeId: Long): Int = mealPlanDao.countForRecipe(recipeId)

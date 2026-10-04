@@ -136,6 +136,24 @@ class TargetWire(BaseModel):
     source: str = "FORMULA"
 
 
+class PlanViewWire(BaseModel):
+    """How the meal-plan screen is laid out. `weeks` is 1 or 2; `calendar` False means just the
+    current week(s), with no browsing to other weeks."""
+
+    weeks: int = 1
+    calendar: bool = True
+    updatedAt: int
+
+
+class DeletedWire(BaseModel):
+    """remoteIds Claude deleted, per kitchen collection, for the phone to drop."""
+
+    recipes: list[str] = Field(default_factory=list)
+    pantryItems: list[str] = Field(default_factory=list)
+    shoppingItems: list[str] = Field(default_factory=list)
+    mealPlanEntries: list[str] = Field(default_factory=list)
+
+
 class SyncPush(BaseModel):
     recipes: list[RecipeWire] = Field(default_factory=list)
     pantryItems: list[PantryItemWire] = Field(default_factory=list)
@@ -144,6 +162,7 @@ class SyncPush(BaseModel):
     nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
     supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
     bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)
+    planView: PlanViewWire | None = None
 
 
 class SyncPresent(BaseModel):
@@ -182,3 +201,6 @@ class SyncResponse(BaseModel):
     nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
     supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
     bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)
+    planView: PlanViewWire | None = None
+    """Set only when it changed since the phone's lastSyncedAt."""
+    deleted: DeletedWire = Field(default_factory=DeletedWire)

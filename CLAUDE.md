@@ -60,7 +60,7 @@ bearer token), and Claude reaches the same store as a claude.ai custom connector
 `/mcp` (Google sign-in limited to `KO_ALLOWED_EMAILS`, exposed publicly via Tailscale
 Funnel). Design history: `C:\Users\lucca\.claude\plans\i-want-to-start-curried-dragon.md`.
 The gym (food diary, supplement ticks, weigh-ins) syncs too, via `GymSyncRepository`;
-Claude may edit/delete gym entries (server tombstones the phone applies), never kitchen data.
+Claude may edit/delete gym entries and delete kitchen rows (recipes, pantry, shopping, plan) — both reach the phone as tombstones (`deleted` list in the sync response, `store.delete_kitchen_row`). The meal-plan layout (1/2 weeks, calendar paging on/off) is a last-write-wins `planView` setting Claude and the phone both write.
 Deletions reach the NAS through the `present` id lists each sync sends — the server
 prunes only rows the phone has already seen (`store.prune_absent`). Server tests:
 `cd server && .venv/Scripts/python -m pytest` and `ruff check .`.
