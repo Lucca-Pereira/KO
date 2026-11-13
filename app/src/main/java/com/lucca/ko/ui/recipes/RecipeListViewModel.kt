@@ -13,7 +13,31 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class RecipeSort(val label: String) {
+    NAME("A to Z"),
+    NEWEST("Newest first"),
+    MOST_COOKED("Most cooked"),
+    QUICKEST("Quickest");
+
+    fun apply(list: List<RecipeWithDetails>): List<RecipeWithDetails> = when (this) {
+        NAME -> list.sortedBy { it.recipe.title.lowercase() }
+        NEWEST -> list.sortedByDescending { it.recipe.id }
+        MOST_COOKED -> list.sortedWith(
+            compareByDescending<RecipeWithDetails> { it.recipe.timesCooked }
+                .thenBy { it.recipe.title.lowercase() },
+        )
+        // Recipes with no times go last rather than looking instant.
+        QUICKEST -> list.sortedWith(
+            compareBy<RecipeWithDetails> {
+                listOfNotNull(it.recipe.prepMinutes, it.recipe.cookMinutes).takeIf { t -> t.isNotEmpty() }?.sum()
+                    ?: Int.MAX_VALUE
+            }.thenBy { it.recipe.title.lowercase() },
+        )
+    }
+}
+
 data class RecipeListUiState(
+    val sort: RecipeSort = RecipeSort.NAME,
     val query: String = "",
     val activeTag: String? = null,
     val favouritesOnly: Boolean = false,
@@ -31,20 +55,24 @@ class RecipeListViewModel(private val recipes: RecipeRepository) : ViewModel() {
     private val query = MutableStateFlow("")
     private val activeTag = MutableStateFlow<String?>(null)
     private val favouritesOnly = MutableStateFlow(false)
+    private val sort = MutableStateFlow(RecipeSort.NAME)
+
+    fun setSort(value: RecipeSort) { sort.value = value }
 
     val state = combine(
         query.flatMapLatest { recipes.searchLibrary(it) },
         query,
-        activeTag,
-        favouritesOnly,
+        combine(activeTag, favouritesOnly, sort) { t, f, o -> Triple(t, f, o) },
         recipes.tags,
-    ) { found, q, tag, favesOnly, tags ->
+    ) { found, q, filters, tags ->
+        val (tag, favesOnly, order) = filters
         // Search is a database LIKE on the blob; tag and favourite filters are in memory, which
         // for a library of a few hundred recipes is free and keeps the query simple.
-        val filtered = found
+        val filtered = order.apply(found)
             .filter { tag == null || it.tags.any { t -> t.name.equals(tag, ignoreCase = true) } }
             .filter { !favesOnly || it.recipe.isFavourite }
         RecipeListUiState(
+            sort = order,
             query = q,
             activeTag = tag,
             favouritesOnly = favesOnly,

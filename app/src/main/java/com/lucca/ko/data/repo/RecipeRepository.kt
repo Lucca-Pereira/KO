@@ -6,6 +6,8 @@ import com.lucca.ko.data.db.RecipeIngredient
 import com.lucca.ko.data.db.RecipeSource
 import com.lucca.ko.data.db.RecipeTag
 import com.lucca.ko.data.db.ShoppingListItem
+import com.lucca.ko.domain.shopping.ShoppingQuantity
+import com.lucca.ko.domain.units.MeasureScaler
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.data.db.Tag
 import com.lucca.ko.data.db.dao.MealPlanDao
@@ -292,7 +294,8 @@ class RecipeRepository(
         syncShopping(item.copy(status = status))
     }
 
-    suspend fun addMissingIngredientsToShopping(dishId: Long) {
+    /** [scale] multiplies each ingredient's amount, so a doubled recipe shops for double. */
+    suspend fun addMissingIngredientsToShopping(dishId: Long, scale: Double = 1.0) {
         val recipe = recipeDao.recipeWithDetailsOnce(dishId) ?: return
         val pantrySnapshot = pantryDao.getAll()
         recipe.ingredients.forEach { ingredient ->
@@ -301,9 +304,10 @@ class RecipeRepository(
                 ingredient.pantryItemId,
                 pantrySnapshot,
             )
-            if (availability == Availability.MISSING &&
-                shoppingDao.byNormalized(ingredient.normalizedName) == null
-            ) {
+            if (availability != Availability.MISSING) return@forEach
+            val amount = MeasureScaler.scale(ingredient.measure, scale)?.trim()?.ifEmpty { null }
+            val existing = shoppingDao.byNormalized(ingredient.normalizedName)
+            if (existing == null) {
                 shoppingDao.insertIgnore(
                     ShoppingListItem(
                         name = match?.name ?: ingredient.rawName,
@@ -311,8 +315,11 @@ class RecipeRepository(
                         category = match?.category ?: CategoryGuesser.guess(ingredient.rawName),
                         pantryItemId = match?.id,
                         remoteId = UUID.randomUUID().toString(),
+                        quantity = amount,
                     ),
                 )
+            } else if (!existing.checked && amount != null) {
+                shoppingDao.update(existing.copy(quantity = ShoppingQuantity.merge(existing.quantity, amount)))
             }
         }
     }

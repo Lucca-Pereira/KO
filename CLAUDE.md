@@ -60,10 +60,20 @@ bearer token), and Claude reaches the same store as a claude.ai custom connector
 `/mcp` (Google sign-in limited to `KO_ALLOWED_EMAILS`, exposed publicly via Tailscale
 Funnel). Design history: `C:\Users\lucca\.claude\plans\i-want-to-start-curried-dragon.md`.
 The gym (food diary, supplement ticks, weigh-ins) syncs too, via `GymSyncRepository`;
-Claude may edit/delete gym entries and delete kitchen rows (recipes, pantry, shopping, plan) — both reach the phone as tombstones (`deleted` list in the sync response, `store.delete_kitchen_row`). The meal-plan layout (1/2 weeks, calendar paging on/off) is a last-write-wins `planView` setting Claude and the phone both write.
+Claude may edit/delete gym entries and delete kitchen rows (recipes, pantry, shopping, plan) — both reach the phone as tombstones (`deleted` list in the sync response, `store.delete_kitchen_row`). The meal-plan layout (1/2 weeks, which week is active) is a last-write-wins `planView` setting Claude and the phone both write.
 Deletions reach the NAS through the `present` id lists each sync sends — the server
 prunes only rows the phone has already seen (`store.prune_absent`). Server tests:
 `cd server && .venv/Scripts/python -m pytest` and `ruff check .`.
+
+**The meal plan is a fixed week, not a calendar.** Meals sit on a weekday of week 1 (or 1–2 for
+a two-week plan); there are no dates in the UI. Storage is unchanged: a slot is a date inside
+one reserved fortnight starting Monday 2001-01-01, translated only in
+`domain/plan/FixedWeek.kt` and its server twin `server/ko_sync/fixed_week.py` (the two must
+agree). `PlanView.activeWeek` — switched by hand, synced last-write-wins — is which week counts
+as "this week" for the plan screen and Today. `data/repair/PlanMaintenance.kt` converts a plan
+made on real dates (this week → week 1, next → week 2, other rows left in place but never
+shown) and clears the "cooked" ticks each Monday. Plan entries still only ever *push as new
+rows*, so a move re-issues the entry under a new `remoteId` to make it reach the NAS.
 
 **Undo is a snapshot stack, not a diff.** `RevisionRepository` (backed by
 `RevisionDao`/`recipe_revisions`) stores a full serialized `RecipeDraft` before any
@@ -74,10 +84,13 @@ UI existed — kept because the import-review pattern may return), matched by na
 ingredients and by position for steps, not a real patch format.
 
 **Navigation**: type-safe routes as `@Serializable` objects/classes in `ui/nav/Routes.kt`,
-wired in `ui/nav/KoRoot.kt`'s single `NavHost`. Every screen's top bar is
-`ui/common/KoTopBar.kt`, which always renders a Settings gear via `LocalOpenSettings` —
-a `CompositionLocal` provided once in `KoRoot` — rather than threading an
-`onOpenSettings` callback through every screen signature.
+wired in `ui/nav/KoRoot.kt`'s single `NavHost`, inside a `ModalNavigationDrawer` (the main
+menu: Today, Recipes, Groceries, Pantry, Meals, Gym, Settings — there is no bottom bar). The
+start destination is `TodayRoute` (`ui/today/HomeScreen.kt`; `ui/nutrition/TodayScreen.kt` is
+the Gym tab's diary, a different thing). Every screen's top bar is `ui/common/KoTopBar.kt`: a
+screen that passes no `navigationIcon` is a top-level section and gets the menu button via
+`LocalOpenMenu` — a `CompositionLocal` provided once in `KoRoot` — rather than threading an
+`onOpenMenu` callback through every screen signature.
 
 **Package layout**: `data/db/` (entities, DAOs, migrations), `data/repo/` (one
 repository per feature area — Pantry/Recipe/MealPlan/Shopping/Nutrition/Body/

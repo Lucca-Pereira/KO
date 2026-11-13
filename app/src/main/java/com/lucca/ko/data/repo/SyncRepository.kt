@@ -74,7 +74,7 @@ class SyncRepository(
         val pendingShopping = shoppingRepository.pendingSyncPush()
         val shoppingWires = pendingShopping.map { item ->
             val remoteId = item.remoteId ?: freshId { shoppingRepository.setRemoteId(item.id, it) }
-            ShoppingItemWire(remoteId, item.name)
+            ShoppingItemWire(remoteId, item.name, item.quantity)
         }
 
         val pendingPlan = mealPlanRepository.pendingSyncPush()
@@ -88,7 +88,7 @@ class SyncRepository(
 
         // A never-changed layout (updatedAt 0) isn't sent: it must not clobber Claude's choice.
         val planView = planViewRepository.current().takeIf { it.updatedAt > 0 }
-            ?.let { PlanViewWire(it.weeks, it.calendar, it.updatedAt) }
+            ?.let { PlanViewWire(it.weeks, it.calendar, it.updatedAt, it.activeWeek) }
 
         // Read after the pending rows above have had their remoteIds assigned, so everything being
         // pushed this round is also listed as present.
@@ -156,6 +156,11 @@ class SyncRepository(
                 .onFailure { skipped += "plan \"${wire.recipeTitle}\": ${it.message}" }
         }
         // Ticks before diary lines, so a pulled supplement line finds its supplement already ticked.
+        // Anything pulled on a real calendar date is folded into the fixed plan (or left out of
+        // it) here; converted rows go back up under new ids on the next sync.
+        runCatching { mealPlanRepository.convertLegacyDates() }
+            .onFailure { skipped += "plan conversion: ${it.message}" }
+
         response.supplementLogs.filterNot { it.remoteId in justPushed }.forEach { wire ->
             runCatching { gymSyncRepository.applyLog(wire, response.serverTime) }
                 .onSuccess { pulled++ }
@@ -173,7 +178,7 @@ class SyncRepository(
         }
 
         response.planView?.let {
-            planViewRepository.applyFromSync(PlanView(it.weeks, it.calendar, it.updatedAt))
+            planViewRepository.applyFromSync(PlanView(it.weeks, it.calendar, it.updatedAt, it.activeWeek))
         }
 
         // Deletions Claude made. After the upserts, so a row both edited and deleted ends deleted.
@@ -300,6 +305,7 @@ class SyncRepository(
                 category = CategoryGuesser.guess(wire.name),
                 remoteId = wire.remoteId,
                 syncedAt = serverTime,
+                quantity = wire.quantity?.ifBlank { null },
             ),
         )
         if (insertedId <= 0) {

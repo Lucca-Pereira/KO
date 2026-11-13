@@ -13,15 +13,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,7 +31,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,17 +41,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.MealSlot
 import com.lucca.ko.data.db.relations.PlannedRecipe
+import com.lucca.ko.domain.plan.FixedWeek
 import com.lucca.ko.ui.common.KoTopBar
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,27 +67,20 @@ fun PlanScreen(
     Scaffold(
         topBar = {
             KoTopBar(
-                title = "Meal plan",
+                title = "Meals",
                 actions = {
-                    if (!state.isCurrentWeek) TextButton(onClick = vm::goToday) { Text("Today") }
                     var layoutMenu by remember { mutableStateOf(false) }
                     IconButton(onClick = { layoutMenu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Plan layout")
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Plan length")
                     }
                     DropdownMenu(expanded = layoutMenu, onDismissRequest = { layoutMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text(if (state.weeks == 1) "✓ One week" else "One week") },
+                            text = { Text(if (state.weeks == 1) "✓ One-week plan" else "One-week plan") },
                             onClick = { layoutMenu = false; vm.setWeeks(1) },
                         )
                         DropdownMenuItem(
-                            text = { Text(if (state.weeks == 2) "✓ Two weeks" else "Two weeks") },
+                            text = { Text(if (state.weeks == 2) "✓ Two-week plan" else "Two-week plan") },
                             onClick = { layoutMenu = false; vm.setWeeks(2) },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(if (state.calendar) "✓ Browse other weeks" else "Browse other weeks")
-                            },
-                            onClick = { layoutMenu = false; vm.setCalendar(!state.calendar) },
                         )
                     }
                 },
@@ -101,24 +88,19 @@ fun PlanScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (state.calendar) {
-                    IconButton(onClick = vm::prevWeek) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
-                    }
-                }
-                Text(
-                    state.rangeLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f).padding(vertical = if (state.calendar) 0.dp else 12.dp),
-                    textAlign = TextAlign.Center,
-                )
-                if (state.calendar) {
-                    IconButton(onClick = vm::nextWeek) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
+            // Which week is "this week" is the user's call, not the calendar's: tapping a chip
+            // is the whole switch, and the Today screen follows it.
+            if (state.weeks > 1) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                ) {
+                    (1..state.weeks).forEach { week ->
+                        FilterChip(
+                            selected = state.activeWeek == week,
+                            onClick = { vm.setActiveWeek(week) },
+                            label = { Text("Week $week") },
+                        )
                     }
                 }
             }
@@ -182,6 +164,7 @@ fun PlanScreen(
     if (moving != null) {
         MoveEntryDialog(
             entry = moving,
+            weeks = state.weeks,
             onDismiss = { movingEntry = null },
             onConfirm = { date, slot ->
                 vm.move(moving.entry.id, date, slot)
@@ -220,20 +203,18 @@ private fun DayCard(
             containerColor = if (day.isToday) {
                 MaterialTheme.colorScheme.primaryContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                MaterialTheme.colorScheme.surfaceContainer
             },
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        day.weekdayLabel,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(day.dateLabel, style = MaterialTheme.typography.bodySmall)
-                }
+                Text(
+                    if (day.isToday) "${day.weekdayLabel} · today" else day.weekdayLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
                 IconButton(onClick = onAdd) {
                     Icon(Icons.Filled.Add, contentDescription = "Add a meal to ${day.weekdayLabel}")
                 }
@@ -327,49 +308,38 @@ private fun PlannedRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoveEntryDialog(
     entry: PlannedRecipe,
+    weeks: Int,
     onDismiss: () -> Unit,
     onConfirm: (LocalDate, MealSlot) -> Unit,
 ) {
-    val current = runCatching { LocalDate.parse(entry.entry.date) }.getOrDefault(LocalDate.now())
-    val pickerState = rememberDatePickerState(
-        initialSelectedDateMillis = current.atStartOfDay(ZoneId.systemDefault())
-            .toInstant().toEpochMilli(),
-    )
+    val current = runCatching { LocalDate.parse(entry.entry.date) }.getOrNull()
+        ?.takeIf(FixedWeek::isSlot) ?: FixedWeek.ANCHOR
+    var week by remember { mutableStateOf(FixedWeek.weekOf(current).coerceAtMost(weeks)) }
+    var day by remember { mutableStateOf(current.dayOfWeek) }
     var slot by remember { mutableStateOf(entry.entry.slot) }
 
-    DatePickerDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
+        title = { Text("Move ${entry.displayTitle}") },
+        text = {
+            SlotPickerFields(
+                weeks = weeks,
+                week = week,
+                onWeek = { week = it },
+                day = day,
+                onDay = { day = it },
+                slot = slot,
+                onSlot = { slot = it },
+            )
+        },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    val millis = pickerState.selectedDateMillis
-                    val date = if (millis == null) {
-                        current
-                    } else {
-                        // The picker works in UTC; read the date back the same way so a
-                        // selection never lands on the day before in a negative offset.
-                        Instant.ofEpochMilli(millis).atZone(ZoneId.of("UTC")).toLocalDate()
-                    }
-                    onConfirm(date, slot)
-                },
-            ) { Text("Move") }
+            TextButton(onClick = { onConfirm(FixedWeek.dateFor(week, day), slot) }) { Text("Move") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) {
-        DatePicker(state = pickerState, title = null)
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            MealSlot.entries.forEach { s ->
-                FilterChip(selected = slot == s, onClick = { slot = s }, label = { Text(s.label()) })
-            }
-        }
-    }
+    )
 }
 
 @Composable
@@ -379,7 +349,7 @@ private fun ServingsDialog(
     onConfirm: (Double) -> Unit,
 ) {
     var value by remember { mutableStateOf(entry.entry.servings) }
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Servings") },
         text = {

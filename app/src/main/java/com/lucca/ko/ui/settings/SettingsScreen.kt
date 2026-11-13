@@ -46,7 +46,7 @@ import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)) {
+fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)) {
     val agentImport by vm.agentImport.collectAsStateWithLifecycle()
     val backup by vm.backup.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
@@ -100,15 +100,7 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel(factory
 
     Scaffold(
         topBar = {
-            KoTopBar(
-                title = "Settings",
-                showSettings = false,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            KoTopBar(title = "Settings")
         },
     ) { padding ->
         Column(

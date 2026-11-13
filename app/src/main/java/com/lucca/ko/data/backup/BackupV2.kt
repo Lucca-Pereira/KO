@@ -134,7 +134,7 @@ data class ShoppingListItemV2(
     val checked: Boolean = false,
     val addedAt: Long = 0,
     val remoteId: String? = null,
-    val syncedAt: Long? = null,
+    val syncedAt: Long? = null,    val quantity: String? = null,
 )
 
 @Serializable
@@ -322,11 +322,11 @@ fun MealPlanEntryV2.toEntity() = MealPlanEntry(
 )
 
 fun ShoppingListItem.toV2() = ShoppingListItemV2(
-    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt,
+    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt, quantity,
 )
 
 fun ShoppingListItemV2.toEntity() = ShoppingListItem(
-    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt,
+    id, name, normalizedName, category, pantryItemId, checked, addedAt, remoteId, syncedAt, quantity,
 )
 
 fun FoodItem.toV2() = FoodItemV2(

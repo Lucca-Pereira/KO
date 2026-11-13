@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.db.ShoppingListItem
+import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -14,7 +15,9 @@ data class ShoppingUiState(
     val sections: List<ShoppingSection> = emptyList(),
     val checked: List<ShoppingListItem> = emptyList(),
     val loading: Boolean = true,
-)
+) {
+    val toBuy: Int get() = sections.sumOf { it.items.size }
+}
 
 data class ShoppingSection(val category: String, val items: List<ShoppingListItem>)
 
@@ -24,7 +27,7 @@ class ShoppingViewModel(private val repo: ShoppingRepository) : ViewModel() {
         val (checked, pending) = items.partition { it.checked }
         val sections = pending
             .groupBy { it.category.ifBlank { "Other" } }
-            .toSortedMap()
+            .toSortedMap(compareBy({ CategoryGuesser.aisleRank(it) }, { it }))
             .map { (cat, list) -> ShoppingSection(cat, list.sortedBy { it.name.lowercase() }) }
         ShoppingUiState(
             sections = sections,
@@ -37,6 +40,12 @@ class ShoppingViewModel(private val repo: ShoppingRepository) : ViewModel() {
 
     fun toggle(item: ShoppingListItem) =
         viewModelScope.launch { repo.setShoppingChecked(item, !item.checked) }
+
+    fun setQuantity(item: ShoppingListItem, quantity: String) =
+        viewModelScope.launch { repo.setShoppingQuantity(item, quantity) }
+
+    fun moveToAisle(item: ShoppingListItem, aisle: String) =
+        viewModelScope.launch { repo.setShoppingCategory(item, aisle) }
 
     fun delete(id: Long) = viewModelScope.launch { repo.deleteShoppingItem(id) }
 

@@ -1,6 +1,9 @@
 package com.lucca.ko.ui.shopping
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,7 +16,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,12 +37,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.ShoppingListItem
+import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.ui.common.EmptyState
 import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.SectionHeader
@@ -49,10 +61,11 @@ fun ShoppingScreen(vm: ShoppingViewModel = viewModel(factory = ShoppingViewModel
     Scaffold(
         topBar = {
             KoTopBar(
-                title = "Shopping list",
+                title = "Groceries",
+                subtitle = if (state.loading) null else if (state.toBuy == 0) "Nothing to buy" else "${state.toBuy} to buy",
                 actions = {
                     if (state.checked.isNotEmpty()) {
-                        TextButton(onClick = vm::clearChecked) { Text("Clear checked") }
+                        TextButton(onClick = vm::clearChecked) { Text("Clear basket") }
                     }
                 },
             )
@@ -67,7 +80,7 @@ fun ShoppingScreen(vm: ShoppingViewModel = viewModel(factory = ShoppingViewModel
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
-                    placeholder = { Text("Add an item") },
+                    placeholder = { Text("Add an item, e.g. 2 kg potatoes") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -88,15 +101,29 @@ fun ShoppingScreen(vm: ShoppingViewModel = viewModel(factory = ShoppingViewModel
             } else {
                 LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
                     state.sections.forEach { section ->
-                        item(key = "h-${section.category}") { SectionHeader(section.category) }
+                        item(key = "h-${section.category}") {
+                            SectionHeader("${section.category} · ${section.items.size}")
+                        }
                         items(section.items, key = { it.id }) { item ->
-                            ShoppingRow(item, onToggle = { vm.toggle(item) }, onDelete = { vm.delete(item.id) })
+                            ShoppingRow(
+                                item,
+                                onToggle = { vm.toggle(item) },
+                                onDelete = { vm.delete(item.id) },
+                                onMove = { vm.moveToAisle(item, it) },
+                                onQuantity = { vm.setQuantity(item, it) },
+                            )
                         }
                     }
                     if (state.checked.isNotEmpty()) {
-                        item(key = "h-checked") { SectionHeader("In the basket") }
+                        item(key = "h-checked") { SectionHeader("In the basket · ${state.checked.size}") }
                         items(state.checked, key = { it.id }) { item ->
-                            ShoppingRow(item, onToggle = { vm.toggle(item) }, onDelete = { vm.delete(item.id) })
+                            ShoppingRow(
+                                item,
+                                onToggle = { vm.toggle(item) },
+                                onDelete = { vm.delete(item.id) },
+                                onMove = { vm.moveToAisle(item, it) },
+                                onQuantity = { vm.setQuantity(item, it) },
+                            )
                         }
                     }
                 }
@@ -105,23 +132,80 @@ fun ShoppingScreen(vm: ShoppingViewModel = viewModel(factory = ShoppingViewModel
     }
 }
 
+/** Tap the row to tick it off; hold it to file it under another aisle. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ShoppingRow(item: ShoppingListItem, onToggle: () -> Unit, onDelete: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
-        Text(
-            text = item.name,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-            color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.onSurface,
+private fun ShoppingRow(
+    item: ShoppingListItem,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit,
+    onMove: (String) -> Unit,
+    onQuantity: (String) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    if (editing) {
+        var text by remember { mutableStateOf(item.quantity.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Amount for ${item.name}") },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("e.g. 2 kg") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = { TextButton(onClick = { onQuantity(text); editing = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } },
         )
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Filled.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onToggle, onLongClick = { menu = true })
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
+            Text(
+                text = buildAnnotatedString {
+                    if (!item.quantity.isNullOrBlank()) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(item.quantity) }
+                        append("  ")
+                    }
+                    append(item.name)
+                },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+                textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurface,
+            )
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Filled.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text(if (item.quantity.isNullOrBlank()) "Set amount" else "Change amount") },
+                onClick = { menu = false; editing = true },
+            )
+            Text(
+                "Move to aisle",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            CategoryGuesser.aisles.forEach { aisle ->
+                DropdownMenuItem(
+                    text = { Text(aisle) },
+                    leadingIcon = { if (aisle == item.category) Icon(Icons.Filled.Check, contentDescription = "Current") },
+                    onClick = { menu = false; onMove(aisle) },
+                )
+            }
         }
     }
 }

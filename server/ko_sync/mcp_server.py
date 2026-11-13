@@ -14,12 +14,10 @@ the `present` id lists (`store.prune_absent`).
 
 from __future__ import annotations
 
-from datetime import date as Date
-
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-from . import store
+from . import fixed_week, store
 
 # Hints for the Claude apps' permission prompts: reads need no approval, writes are additive or
 # undoable on the phone, and only the gym tools that remove a log entry are marked destructive.
@@ -36,8 +34,13 @@ mcp = FastMCP(
         "KITCHEN — suggest meals from what is actually in the pantry, plan the week, keep the "
         "shopping list current. Read: get_pantry (IN_STOCK / LOW / OUT), list_recipes / "
         "search_recipes, get_meal_plan, get_shopping_list. Write: save_recipe, update_pantry, "
-        "add_to_meal_plan (save the recipe first), add_to_shopping_list. Nothing in the kitchen "
-        "can be deleted from here.\n"
+        "add_to_meal_plan (save the recipe first), add_to_shopping_list. Remove with "
+        "delete_recipe, delete_pantry_item, remove_from_shopping_list, remove_from_meal_plan, "
+        "clear_meal_plan.\n"
+        "The meal plan is a FIXED week, not a calendar: meals sit on a weekday (Monday to "
+        "Sunday) of week 1, or of week 1 or 2 when the user keeps a two-week plan. There are no "
+        "dates. get_plan_view says how many weeks there are and which one is the current week; "
+        "'tonight' means today's weekday in that week.\n"
         "GYM — log what the user tells you they ate, took, or weighed, without asking them for "
         "numbers they didn't give: estimate calories and macros yourself for ordinary foods and "
         "say it's an estimate. Read: get_day (diary, totals vs target, supplements, weight), "
@@ -88,14 +91,14 @@ async def search_recipes(query: str) -> list[dict]:
 
 
 @mcp.tool(annotations=READ)
-async def get_meal_plan(start_date: str | None = None, end_date: str | None = None) -> list[dict]:
-    """List what's planned, ordered by date. Both bounds are inclusive and optional.
+async def get_meal_plan(week: int | None = None) -> list[dict]:
+    """List the fixed meal plan, ordered by week, weekday and meal. Each entry has `week`,
+    `weekday` (MONDAY..SUNDAY), `slot`, `recipeTitle`, `servings` and `remoteId`.
 
     Args:
-        start_date: ISO date, e.g. "2026-09-28". Omit for no lower bound.
-        end_date: ISO date, e.g. "2026-10-04". Omit for no upper bound.
+        week: 1 or 2 to list just that week. Omit for the whole plan.
     """
-    return store.plan_between(start_date, end_date)
+    return _plan_entries(week)
 
 
 @mcp.tool(annotations=READ)
@@ -195,43 +198,68 @@ async def update_pantry(
 
 
 @mcp.tool(annotations=WRITE)
-async def add_to_shopping_list(items: list[str]) -> list[dict]:
+async def add_to_shopping_list(items: list[str], quantities: list[str] | None = None) -> list[dict]:
     """Add one or more items to the shopping list. Items already on it are skipped.
 
     Args:
         items: Item names, e.g. ["flour", "sugar"].
+        quantities: Optional amounts in the same order as items, e.g. ["500 g", "1 kg"]. Use ""
+            for an item with no amount.
     """
     on_list = {i["name"].strip().lower() for i in store.all_shopping_items()}
     added = []
-    for name in items:
+    for index, name in enumerate(items):
         key = name.strip().lower()
         if key and key not in on_list:
             on_list.add(key)
-            added.append(store.insert_shopping_item({"remoteId": store.new_id(), "name": name}))
+            given = quantities[index] if quantities and index < len(quantities) else ""
+            quantity = given.strip() or None
+            added.append(
+                store.insert_shopping_item(
+                    {"remoteId": store.new_id(), "name": name, "quantity": quantity},
+                ),
+            )
     return added
 
 
 @mcp.tool(annotations=WRITE)
 async def add_to_meal_plan(
-    recipe_title: str, date: str, slot: str, servings: float | None = None
+    recipe_title: str,
+    weekday: str,
+    slot: str,
+    week: int | None = None,
+    servings: float | None = None,
 ) -> dict:
-    """Add a recipe to the meal plan on a given day.
+    """Add a recipe to the fixed meal plan on a weekday.
 
     Args:
         recipe_title: Must match a recipe already saved (via save_recipe or already in the app).
-        date: ISO date, e.g. "2026-09-20".
+        weekday: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY or SUNDAY.
         slot: One of BREAKFAST, LUNCH, DINNER, OTHER.
+        week: 1 or 2. Omit to use the current week (see get_plan_view). 2 needs a two-week plan.
         servings: How many servings to plan. Omit to use the recipe's default.
     """
-    return store.insert_plan_entry(
+    view = store.get_plan_view()
+    target_week = week if week is not None else view["activeWeek"]
+    if target_week not in range(1, view["weeks"] + 1):
+        raise ToolError(
+            f"The plan has {view['weeks']} week(s), so week {target_week} doesn't exist. "
+            "set_plan_view(weeks=2) makes it a two-week plan."
+        )
+    try:
+        slot_date = fixed_week.slot_date(target_week, weekday)
+    except ValueError as e:
+        raise ToolError(str(e)) from e
+    entry = store.insert_plan_entry(
         {
             "remoteId": store.new_id(),
             "recipeTitle": recipe_title,
-            "date": date,
+            "date": slot_date,
             "slot": slot,
             "servings": servings,
         }
     )
+    return _describe_plan_entry(entry)
 
 
 @mcp.tool(annotations=DELETE)
@@ -291,63 +319,92 @@ async def remove_from_meal_plan(remote_id: str) -> dict:
     if entry is None:
         raise ToolError(f"No planned meal {remote_id!r}. get_meal_plan lists the current ones.")
     store.delete_kitchen_row("mealPlanEntries", remote_id)
-    return {"deleted": remote_id, "recipeTitle": entry["recipeTitle"], "date": entry["date"]}
+    described = _describe_plan_entry(entry)
+    return {
+        "deleted": remote_id,
+        "recipeTitle": described["recipeTitle"],
+        "week": described["week"],
+        "weekday": described["weekday"],
+    }
 
 
 @mcp.tool(annotations=DELETE)
-async def clear_meal_plan(start_date: str, end_date: str) -> dict:
-    """Remove every planned meal in a date range (both ends inclusive). Recipes stay saved.
+async def clear_meal_plan(week: int | None = None) -> dict:
+    """Remove every planned meal from one week of the fixed plan, or from the whole plan.
+    Recipes stay saved.
 
     Args:
-        start_date: ISO date, e.g. "2026-10-05".
-        end_date: ISO date, e.g. "2026-10-11".
+        week: 1 or 2 to clear just that week. Omit to clear the whole plan.
     """
-    start, end = _iso(start_date), _iso(end_date)
-    if start > end:
-        raise ToolError("start_date is after end_date")
-    entries = store.plan_between(start, end)
+    entries = _plan_entries(week)
     for entry in entries:
         store.delete_kitchen_row("mealPlanEntries", entry["remoteId"])
-    return {"removed": len(entries), "from": start, "to": end}
+    return {"removed": len(entries), "week": week if week is not None else "all"}
 
 
 @mcp.tool(annotations=READ)
 async def get_plan_view() -> dict:
-    """How the phone's meal-plan screen is laid out: `weeks` (1 or 2) and `calendar` (true =
-    the user can page through any week; false = it just shows the current week(s))."""
+    """How the fixed meal plan is laid out: `weeks` (1 or 2) and `activeWeek` — which week is
+    the current one, the week the phone opens on and the one "today" and "tonight" refer to.
+    The user switches the active week by hand; nothing advances it automatically."""
     view = store.get_plan_view()
-    return {"weeks": view["weeks"], "calendar": view["calendar"]}
+    return {"weeks": view["weeks"], "activeWeek": view["activeWeek"]}
 
 
 @mcp.tool(annotations=WRITE)
-async def set_plan_view(weeks: int | None = None, calendar: bool | None = None) -> dict:
-    """Change how the phone's meal-plan screen is laid out. Only what you pass changes.
+async def set_plan_view(weeks: int | None = None, active_week: int | None = None) -> dict:
+    """Change the fixed meal plan's layout. Only what you pass changes.
 
     Args:
-        weeks: 1 for a single week, 2 for a two-week (biweekly) plan.
-        calendar: False to show only the current week(s) with no paging to other weeks; True to
-            let the user browse forwards and back.
+        weeks: 1 for a one-week plan, 2 for a two-week plan. Going back to 1 hides week 2's
+            meals without deleting them.
+        active_week: 1 or 2 — which week is the current one. 2 needs a two-week plan.
     """
-    if weeks is None and calendar is None:
-        raise ToolError("Pass weeks and/or calendar.")
+    if weeks is None and active_week is None:
+        raise ToolError("Pass weeks and/or active_week.")
     if weeks is not None and weeks not in (1, 2):
         raise ToolError("weeks must be 1 or 2.")
     current = store.get_plan_view()
+    new_weeks = weeks if weeks is not None else current["weeks"]
+    new_active = active_week if active_week is not None else current["activeWeek"]
+    if new_active not in range(1, new_weeks + 1):
+        raise ToolError(f"active_week must be between 1 and {new_weeks} for this plan.")
     updated = store.upsert_plan_view(
         {
-            "weeks": weeks if weeks is not None else current["weeks"],
-            "calendar": calendar if calendar is not None else current["calendar"],
+            "weeks": new_weeks,
+            "calendar": False,
+            "activeWeek": new_active,
             "updatedAt": max(store.now_millis(), current["updatedAt"] + 1),
         }
     )
-    return {"weeks": updated["weeks"], "calendar": updated["calendar"]}
+    return {"weeks": updated["weeks"], "activeWeek": updated["activeWeek"]}
 
 
-def _iso(value: str) -> str:
-    try:
-        return Date.fromisoformat(value).isoformat()
-    except ValueError as e:
-        raise ToolError(f"dates must be ISO like 2026-10-05, got {value!r}") from e
+def _describe_plan_entry(entry: dict) -> dict:
+    """A stored plan row as Claude sees it: week and weekday instead of the slot date."""
+    week, weekday = fixed_week.describe(entry["date"]) or (None, None)
+    return {
+        "remoteId": entry["remoteId"],
+        "recipeTitle": entry["recipeTitle"],
+        "week": week,
+        "weekday": weekday,
+        "slot": entry["slot"],
+        "servings": entry.get("servings"),
+    }
+
+
+def _plan_entries(week: int | None) -> list[dict]:
+    """The fixed plan, or one week of it. Rows on real calendar dates — left from before the
+    plan became fixed — fall outside the slot range and are never returned."""
+    if week is None:
+        start, end = fixed_week.FIRST, fixed_week.LAST
+    else:
+        try:
+            start, end = fixed_week.week_range(week)
+        except ValueError as e:
+            raise ToolError(str(e)) from e
+    return [_describe_plan_entry(e) for e in store.plan_between(start, end)]
+
 
 
 def _find_recipe(ref: str) -> dict:

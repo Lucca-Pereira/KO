@@ -59,6 +59,7 @@ class PantryItemWire(BaseModel):
 class ShoppingItemWire(BaseModel):
     remoteId: str
     name: str
+    quantity: str | None = None
 
 
 class MealPlanEntryWire(BaseModel):
@@ -137,12 +138,14 @@ class TargetWire(BaseModel):
 
 
 class PlanViewWire(BaseModel):
-    """How the meal-plan screen is laid out. `weeks` is 1 or 2; `calendar` False means just the
-    current week(s), with no browsing to other weeks."""
+    """How the fixed meal plan is laid out. `weeks` is 1 or 2; `activeWeek` is which of them is
+    "this week". `calendar` is unused since the plan stopped being a calendar; it stays on the
+    wire because phones older than the fixed plan still send and read it."""
 
     weeks: int = 1
-    calendar: bool = True
+    calendar: bool = False
     updatedAt: int
+    activeWeek: int = 1
 
 
 class DeletedWire(BaseModel):

@@ -7,6 +7,7 @@ import com.lucca.ko.data.db.dao.PantryDao
 import com.lucca.ko.data.db.dao.ShoppingDao
 import com.lucca.ko.domain.CategoryGuesser
 import com.lucca.ko.domain.IngredientMatcher
+import com.lucca.ko.domain.shopping.ShoppingQuantity
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
@@ -17,18 +18,35 @@ class ShoppingRepository(
 ) {
     val shoppingItems: Flow<List<ShoppingListItem>> = shoppingDao.observeAll()
 
-    suspend fun addManualShoppingItem(name: String) {
-        val clean = name.trim()
+    /**
+     * Adds what the user typed. A leading amount ("2 kg potatoes") becomes the quantity; adding
+     * something already on the list adds the amounts together instead of doing nothing.
+     */
+    suspend fun addManualShoppingItem(text: String) {
+        val (quantity, clean) = ShoppingQuantity.split(text)
         if (clean.isEmpty()) return
+        val normalized = IngredientMatcher.normalize(clean)
+        val existing = shoppingDao.byNormalized(normalized)
+        if (existing != null) {
+            if (!existing.checked && quantity != null) {
+                shoppingDao.update(existing.copy(quantity = ShoppingQuantity.merge(existing.quantity, quantity)))
+            }
+            return
+        }
         shoppingDao.insertIgnore(
             ShoppingListItem(
                 name = clean,
-                normalizedName = IngredientMatcher.normalize(clean),
+                normalizedName = normalized,
                 category = CategoryGuesser.guess(clean),
                 remoteId = UUID.randomUUID().toString(),
+                quantity = quantity,
             ),
         )
     }
+
+    /** Sets or clears an item's amount. Like the aisle, it stays on the phone after the first sync. */
+    suspend fun setShoppingQuantity(item: ShoppingListItem, quantity: String?) =
+        shoppingDao.update(item.copy(quantity = quantity?.trim()?.ifEmpty { null }))
 
     suspend fun setShoppingChecked(item: ShoppingListItem, checked: Boolean) {
         shoppingDao.update(item.copy(checked = checked))
@@ -50,6 +68,10 @@ class ShoppingRepository(
             )
         }
     }
+
+    /** Files an item under a different aisle. The aisle is only ever read on the phone. */
+    suspend fun setShoppingCategory(item: ShoppingListItem, category: String) =
+        shoppingDao.update(item.copy(category = category))
 
     suspend fun deleteShoppingItem(id: Long) = shoppingDao.delete(id)
 

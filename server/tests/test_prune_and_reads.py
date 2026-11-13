@@ -80,14 +80,20 @@ async def test_list_recipes_is_brief():
     assert "steps" not in brief
 
 
-async def test_get_meal_plan_filters_by_inclusive_date_range():
-    for rid, date in [("m1", "2026-09-27"), ("m2", "2026-09-28"), ("m3", "2026-10-05")]:
+async def test_get_meal_plan_shows_only_fixed_week_slots():
+    # 2001-01-02 is week 1 Tuesday, 2001-01-08 week 2 Monday; the 2026 date is a leftover from
+    # when the plan was a calendar and is no longer part of it.
+    for rid, date in [("m1", "2026-09-27"), ("m2", "2001-01-08"), ("m3", "2001-01-02")]:
         store.insert_plan_entry(
             {"remoteId": rid, "recipeTitle": "X", "date": date, "slot": "DINNER"}
         )
-    week = await mcp_server.get_meal_plan("2026-09-28", "2026-10-04")
-    assert [e["remoteId"] for e in week] == ["m2"]
-    assert len(await mcp_server.get_meal_plan()) == 3
+    plan = await mcp_server.get_meal_plan()
+    assert [(e["remoteId"], e["week"], e["weekday"]) for e in plan] == [
+        ("m3", 1, "TUESDAY"),
+        ("m2", 2, "MONDAY"),
+    ]
+    assert "date" not in plan[0]
+    assert [e["remoteId"] for e in await mcp_server.get_meal_plan(week=2)] == ["m2"]
 
 
 async def test_add_to_shopping_list_skips_what_is_already_on_it():

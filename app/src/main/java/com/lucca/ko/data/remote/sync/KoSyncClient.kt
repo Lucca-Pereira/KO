@@ -54,7 +54,7 @@ data class PantryItemWire(
 )
 
 @Serializable
-data class ShoppingItemWire(val remoteId: String, val name: String)
+data class ShoppingItemWire(val remoteId: String, val name: String, val quantity: String? = null)
 
 @Serializable
 data class MealPlanEntryWire(
@@ -141,7 +141,13 @@ data class TargetWire(
 
 /** How the meal-plan screen is laid out. Last-write-wins on [updatedAt], phone or Claude. */
 @Serializable
-data class PlanViewWire(val weeks: Int = 1, val calendar: Boolean = true, val updatedAt: Long)
+data class PlanViewWire(
+    val weeks: Int = 1,
+    val calendar: Boolean = false,
+    val updatedAt: Long,
+    /** Which week of a two-week plan is current. Absent from older servers, hence the default. */
+    val activeWeek: Int = 1,
+)
 
 /** remoteIds Claude deleted, per kitchen collection: the phone drops them on pull. */
 @Serializable

@@ -20,7 +20,10 @@ Kotlin · Jetpack Compose · Room · Python · FastAPI · MCP · Docker · Tails
 - **Recipes** — a fully editable library (photo, servings, times, tags, notes, ingredients,
   steps), with every ingredient colour-coded against the pantry: green if you have it, red if
   you don't. Marking one *ran out* updates the pantry and the shopping list in one tap.
-- **Meal plan** — a weekly calendar built from the library; tick meals off as cooked.
+- **Meal plan** — a fixed week (or a two-week rotation you switch by hand) built from the
+  library; tick meals off as cooked, and the ticks clear themselves each Monday.
+- **Today** — the start screen: this weekday's meals and whether the pantry covers them,
+  calories so far, and what's on the shopping list.
 - **Shopping list** — fills itself from whatever runs out; ticking an item off restocks it.
 
 **Gym**
@@ -96,7 +99,7 @@ The parts I'd point a reviewer at:
 - **Tools designed for an LLM caller.** MCP tools validate input and return actionable errors
   ("no single supplement matches 'fish oil' — known: Creatine, Whey protein") instead of
   crashing, carry read-only/destructive hints so Claude apps can skip permission prompts for
-  reads, and never let Claude delete kitchen data at all.
+  reads and flag the few that delete.
 
 ## Tech
 
@@ -186,7 +189,8 @@ anything — and editing an existing recipe snapshots it first, so it's one tap 
 `recipeId` omitted or `0` creates a recipe; an existing id replaces it wholesale. Pantry names
 match case-insensitively; status is `IN_STOCK` / `LOW` / `OUT`. A plan entry's `recipeTitle`
 must match a saved recipe or one in the same file; slot is `BREAKFAST` / `LUNCH` / `DINNER` /
-`OTHER`. The authoritative shape is
+`OTHER`. The plan is a fixed week, so only the weekday of `date` is used: the meal lands on
+that weekday in week 1. The authoritative shape is
 [`AgentImportRepository.kt`](app/src/main/java/com/lucca/ko/data/repo/AgentImportRepository.kt).
 
 </details>

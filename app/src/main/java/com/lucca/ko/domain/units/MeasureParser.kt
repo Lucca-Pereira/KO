@@ -82,6 +82,9 @@ object MeasureParser {
         return if (quantity == null && unit == null) null else Measure(quantity, unit)
     }
 
+    /** Whether [word] is a unit this parser knows ("kg", "tbsp", "cans", "pinch"...). */
+    fun isUnit(word: String): Boolean = word.lowercase().let { it in unitAliases || it in bareUnits }
+
     private fun parseQuantity(text: String): Double? {
         // A leading vulgar fraction, optionally after a whole number: "1½", "1 ½", "½".
         val vulgarMatch = Regex("^(\\d+)?\\s*([${vulgarFractions.keys.joinToString("")}])").find(text)

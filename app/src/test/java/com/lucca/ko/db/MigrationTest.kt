@@ -11,6 +11,7 @@ import com.lucca.ko.data.db.MIGRATION_5_6
 import com.lucca.ko.data.db.MIGRATION_6_7
 import com.lucca.ko.data.db.MIGRATION_7_8
 import com.lucca.ko.data.db.MIGRATION_8_9
+import com.lucca.ko.data.db.MIGRATION_9_10
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -555,6 +556,34 @@ class MigrationTest {
                 )
             }.isFailure
             assertTrue("two diary lines claiming one remoteId should violate the unique index", threw)
+        }
+    }
+
+    private fun migrateShoppingTo10(): SupportSQLiteDatabase {
+        helper.createDatabase(TEST_DB, 2).use { it.seedV2() }
+        migrateToLatest().close()
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).close()
+        helper.runMigrationsAndValidate(TEST_DB, 9, true, MIGRATION_8_9).use { db ->
+            db.execSQL(
+                "INSERT INTO shopping_items (id, name, normalizedName, category, checked, addedAt) " +
+                    "VALUES (99, 'flour', 'flour', 'Grains & Pasta', 0, 5)",
+            )
+        }
+        return helper.runMigrationsAndValidate(TEST_DB, 10, true, MIGRATION_9_10)
+    }
+
+    @Test
+    fun migrate9To10_validatesAgainstTheEntities() {
+        migrateShoppingTo10().close()
+    }
+
+    @Test
+    fun migrate9To10_existingShoppingRowsSurviveWithNoAmount() {
+        migrateShoppingTo10().use { db ->
+            assertEquals("flour", db.text("SELECT name FROM shopping_items WHERE id = 99"))
+            assertNull(db.longOrNull("SELECT quantity FROM shopping_items WHERE id = 99"))
         }
     }
 }

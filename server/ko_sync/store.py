@@ -39,8 +39,22 @@ def _connect() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         _init_schema(conn)
+        _add_missing_columns(conn)
         _connection = conn
     return _connection
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """Columns added after a table first shipped. `CREATE TABLE IF NOT EXISTS` leaves an existing
+    table alone, so a database created by an older version needs them added by hand."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(plan_view)")}
+    if "active_week" not in columns:
+        conn.execute("ALTER TABLE plan_view ADD COLUMN active_week INTEGER NOT NULL DEFAULT 1")
+        conn.commit()
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(shopping_items)")}
+    if "quantity" not in columns:
+        conn.execute("ALTER TABLE shopping_items ADD COLUMN quantity TEXT")
+        conn.commit()
 
 
 def init() -> None:
@@ -92,6 +106,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS shopping_items (
             remote_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            quantity TEXT,
             created_at INTEGER NOT NULL
         );
 
@@ -118,7 +133,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY CHECK (id = 1),
             weeks INTEGER NOT NULL DEFAULT 1,
             calendar INTEGER NOT NULL DEFAULT 1,
-            updated_at INTEGER NOT NULL
+            updated_at INTEGER NOT NULL,
+            active_week INTEGER NOT NULL DEFAULT 1
         );
 
         -- Gym. Diary lines and supplement ticks can be edited and deleted from Claude, so they
@@ -240,7 +256,7 @@ def _row_to_pantry(row: sqlite3.Row) -> dict:
 
 
 def _row_to_shopping(row: sqlite3.Row) -> dict:
-    return {"remoteId": row["remote_id"], "name": row["name"]}
+    return {"remoteId": row["remote_id"], "name": row["name"], "quantity": row["quantity"]}
 
 
 def _row_to_plan(row: sqlite3.Row) -> dict:
@@ -389,8 +405,9 @@ def pantry_changed_since(since_millis: int) -> list[dict]:
 def insert_shopping_item(wire: dict) -> dict:
     with _cursor() as cur:
         cur.execute(
-            "INSERT OR IGNORE INTO shopping_items (remote_id, name, created_at) VALUES (?, ?, ?)",
-            (wire["remoteId"], wire["name"], now_millis()),
+            "INSERT OR IGNORE INTO shopping_items (remote_id, name, quantity, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (wire["remoteId"], wire["name"], wire.get("quantity"), now_millis()),
         )
     return wire
 
@@ -510,11 +527,14 @@ def get_plan_view() -> dict:
         cur.execute("SELECT * FROM plan_view WHERE id = 1")
         row = cur.fetchone()
     if row is None:
-        return {"weeks": 1, "calendar": True, "updatedAt": 0}
+        return {"weeks": 1, "calendar": False, "updatedAt": 0, "activeWeek": 1}
+    weeks = row["weeks"]
     return {
-        "weeks": row["weeks"],
+        "weeks": weeks,
         "calendar": bool(row["calendar"]),
         "updatedAt": row["updated_at"],
+        # A one-week plan has only week 1, whatever was stored while it was two.
+        "activeWeek": row["active_week"] if weeks == 2 else 1,
     }
 
 
@@ -525,10 +545,16 @@ def upsert_plan_view(wire: dict) -> dict:
         return current
     with _cursor() as cur:
         cur.execute(
-            "INSERT INTO plan_view (id, weeks, calendar, updated_at) VALUES (1, ?, ?, ?) "
+            "INSERT INTO plan_view (id, weeks, calendar, updated_at, active_week) "
+            "VALUES (1, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET weeks=excluded.weeks, calendar=excluded.calendar, "
-            "updated_at=excluded.updated_at",
-            (wire["weeks"], int(wire["calendar"]), wire["updatedAt"]),
+            "updated_at=excluded.updated_at, active_week=excluded.active_week",
+            (
+                wire["weeks"],
+                int(wire.get("calendar", False)),
+                wire["updatedAt"],
+                wire.get("activeWeek", 1),
+            ),
         )
     return get_plan_view()
 

@@ -11,7 +11,9 @@ import kotlinx.serialization.Serializable
  * means "not planning anything, just browsing".
  */
 
-// ---- Bottom bar ---------------------------------------------------------------------
+// ---- Main menu ----------------------------------------------------------------------
+
+@Serializable data object TodayRoute
 
 @Serializable data object PantryRoute
 
@@ -32,7 +34,7 @@ import kotlinx.serialization.Serializable
 /** [recipeId] `0L` creates a new recipe. */
 @Serializable data class RecipeEditRoute(val recipeId: Long = 0L)
 
-/** Pick an existing library recipe to plan on [date] / [slot]. */
+/** Pick an existing library recipe to plan on [date] (a fixed-week slot date) / [slot]. */
 @Serializable data class RecipePickerRoute(val date: String, val slot: String)
 
 // ---- Nutrition ----------------------------------------------------------------------

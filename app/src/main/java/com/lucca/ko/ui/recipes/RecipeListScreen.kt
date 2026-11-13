@@ -14,7 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -44,12 +46,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.data.db.relations.RecipeWithDetails
-import com.lucca.ko.data.images.RecipeImages
 import com.lucca.ko.ui.common.EmptyState
 import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.common.RecipeMetaLine
-import com.lucca.ko.ui.common.RecipeThumbnail
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,12 +61,32 @@ fun RecipeListScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     var menuOpen by remember { mutableStateOf(false) }
+    var sortOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             KoTopBar(
                 title = "Recipes",
+                subtitle = if (state.loading) null else if (state.isFiltered) {
+                    "${state.recipes.size} of ${state.totalCount}"
+                } else {
+                    "${state.totalCount} recipe${if (state.totalCount == 1) "" else "s"}"
+                },
                 actions = {
+                    IconButton(onClick = { sortOpen = true }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort recipes")
+                    }
+                    DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                        RecipeSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                leadingIcon = {
+                                    if (option == state.sort) Icon(Icons.Filled.Check, contentDescription = "Selected")
+                                },
+                                onClick = { sortOpen = false; vm.setSort(option) },
+                            )
+                        }
+                    }
                     IconButton(onClick = vm::toggleFavouritesOnly) {
                         Icon(
                             if (state.favouritesOnly) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -183,11 +203,6 @@ private fun RecipeRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        RecipeThumbnail(
-            // A photo the user took wins over whatever the source supplied.
-            model = RecipeImages.asFile(recipe.imageLocalPath) ?: recipe.imageUrl,
-            size = 56,
-        )
         Column(Modifier.weight(1f)) {
             Text(
                 recipe.title.ifBlank { "Untitled recipe" },

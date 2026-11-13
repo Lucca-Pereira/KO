@@ -40,7 +40,12 @@ class KoApp : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
-                    applicationScope.launch { runCatching { container.syncRepository.sync() } }
+                    applicationScope.launch {
+                        // Before the sync, so a plan converted to fixed-week slots is what
+                        // gets pushed rather than the dated rows it replaces.
+                        container.planMaintenance.run()
+                        runCatching { container.syncRepository.sync() }
+                    }
                 }
             },
         )

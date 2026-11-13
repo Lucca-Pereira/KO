@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class RecipeDetailUiState(
@@ -38,6 +39,31 @@ data class RecipeDetailUiState(
     val planCount: Int = 0,
 )
 
+/** One running countdown. [endsAt] is wall-clock millis so it survives a rotation. */
+data class CookTimer(val id: Int, val label: String, val endsAt: Long)
+
+/** A step as shown while cooking: from saved steps, or the split prose of an import. */
+data class CookStep(val text: String, val minutes: Int?)
+
+/**
+ * Screen-only state: nothing here is saved. The scale, what you have crossed off, which step you
+ * are on and the running timers all reset when you leave the recipe.
+ */
+data class CookSession(
+    val scale: Double = 1.0,
+    val crossed: Set<Long> = emptySet(),
+    val currentStep: Int = 0,
+    val cooking: Boolean = false,
+    val timers: List<CookTimer> = emptyList(),
+)
+
+val RecipeDetailUiState.cookSteps: List<CookStep>
+    get() = if (steps.isNotEmpty()) {
+        steps.map { CookStep(it.text, it.minutes) }
+    } else {
+        fallbackSteps.map { CookStep(it, null) }
+    }
+
 class RecipeDetailViewModel(
     private val recipes: RecipeRepository,
     private val pantryRepo: PantryRepository,
@@ -47,6 +73,26 @@ class RecipeDetailViewModel(
 ) : ViewModel() {
 
     private val planCount = MutableStateFlow(0)
+
+    private val _session = MutableStateFlow(CookSession())
+    val session = _session.asStateFlow()
+    private var nextTimerId = 1
+
+    fun setScale(scale: Double) = _session.update { it.copy(scale = scale) }
+
+    fun toggleCrossed(ingredientId: Long) = _session.update {
+        it.copy(crossed = if (ingredientId in it.crossed) it.crossed - ingredientId else it.crossed + ingredientId)
+    }
+
+    fun setStep(index: Int) = _session.update { it.copy(currentStep = index.coerceAtLeast(0)) }
+
+    fun setCooking(on: Boolean) = _session.update { it.copy(cooking = on) }
+
+    fun startTimer(label: String, seconds: Int) = _session.update {
+        it.copy(timers = it.timers + CookTimer(nextTimerId++, label, System.currentTimeMillis() + seconds * 1000L))
+    }
+
+    fun cancelTimer(id: Int) = _session.update { it.copy(timers = it.timers.filterNot { t -> t.id == id }) }
 
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
@@ -108,7 +154,7 @@ class RecipeDetailViewModel(
         viewModelScope.launch { recipes.markIngredientHave(ingredientId) }
 
     fun addAllMissingToShopping() =
-        viewModelScope.launch { recipes.addMissingIngredientsToShopping(recipeId) }
+        viewModelScope.launch { recipes.addMissingIngredientsToShopping(recipeId, _session.value.scale) }
 
     fun toggleFavourite() = viewModelScope.launch {
         val current = state.value.recipe?.isFavourite ?: return@launch

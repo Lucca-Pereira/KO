@@ -4,75 +4,90 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.lucca.ko.data.db.MealSlot
-import com.lucca.ko.data.images.RecipeImages
 import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.ResolvedIngredient
+import com.lucca.ko.domain.plan.FixedWeek
+import com.lucca.ko.domain.units.MeasureScaler
 import com.lucca.ko.ui.common.Dot
 import com.lucca.ko.ui.common.EmptyState
 import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.common.RecipeMetaLine
 import com.lucca.ko.ui.common.availabilityColor
+import com.lucca.ko.ui.plan.SlotPickerFields
 import com.lucca.ko.ui.plan.label
+import com.lucca.ko.ui.plan.rememberPlanView
 import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
+import kotlin.math.roundToInt
+
+private val scaleOptions = listOf(0.5, 1.0, 2.0, 3.0, 4.0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,10 +97,12 @@ fun RecipeDetailScreen(
     vm: RecipeDetailViewModel = viewModel(factory = RecipeDetailViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val session by vm.session.collectAsStateWithLifecycle()
     val deleted by vm.deleted.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
     var planning by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     var justPlanned by remember { mutableStateOf<String?>(null) }
     val snackbarHost = remember { SnackbarHostState() }
     val message by vm.message.collectAsStateWithLifecycle()
@@ -102,6 +119,15 @@ fun RecipeDetailScreen(
     LaunchedEffect(Unit) { vm.refreshPlanCount() }
 
     val recipe = state.recipe
+    val steps = state.cookSteps
+
+    // The screen stays lit while you cook, and only then.
+    val view = LocalView.current
+    DisposableEffect(session.cooking) {
+        view.keepScreenOn = session.cooking
+        onDispose { view.keepScreenOn = false }
+    }
+    BackHandler(enabled = session.cooking) { vm.setCooking(false) }
 
     if (confirmDelete && recipe != null) {
         AlertDialog(
@@ -140,8 +166,7 @@ fun RecipeDetailScreen(
             onConfirm = { date, slot ->
                 vm.addToPlan(date, slot)
                 planning = false
-                justPlanned = "Added to ${slot.label().lowercase()} on ${date.dayOfMonth} " +
-                    date.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+                justPlanned = "Added to ${slot.label().lowercase()} on ${date.dayOfWeek.label()}"
             },
         )
     }
@@ -151,6 +176,24 @@ fun RecipeDetailScreen(
             snackbarHost.showSnackbar(justPlanned!!)
             justPlanned = null
         }
+    }
+
+    if (session.cooking && recipe != null) {
+        CookMode(
+            title = recipe.title,
+            steps = steps,
+            current = session.currentStep,
+            ingredients = state.ingredients,
+            scale = session.scale,
+            crossed = session.crossed,
+            timers = session.timers,
+            onStep = vm::setStep,
+            onToggleIngredient = vm::toggleCrossed,
+            onStartTimer = vm::startTimer,
+            onCancelTimer = vm::cancelTimer,
+            onClose = { vm.setCooking(false) },
+        )
+        return
     }
 
     Scaffold(
@@ -180,22 +223,33 @@ fun RecipeDetailScreen(
                                 },
                             )
                         }
-                        IconButton(onClick = { onEdit(recipe.id) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit recipe")
+                        IconButton(onClick = { planning = true }) {
+                            Icon(Icons.Filled.CalendarMonth, contentDescription = "Add to plan")
                         }
-                        IconButton(onClick = { confirmDelete = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete recipe")
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Edit recipe") },
+                                onClick = { menuOpen = false; onEdit(recipe.id) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete recipe") },
+                                onClick = { menuOpen = false; confirmDelete = true },
+                            )
                         }
                     }
                 },
             )
         },
+        bottomBar = { TimersBar(session.timers, onCancel = vm::cancelTimer) },
         floatingActionButton = {
-            if (recipe != null) {
+            if (recipe != null && steps.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = { planning = true },
-                    icon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) },
-                    text = { Text("Add to plan") },
+                    onClick = { vm.setStep(0); vm.setCooking(true) },
+                    icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                    text = { Text("Start cooking") },
                 )
             }
         },
@@ -213,18 +267,6 @@ fun RecipeDetailScreen(
                 modifier = Modifier.padding(padding),
                 contentPadding = PaddingValues(bottom = 96.dp),
             ) {
-                val image = RecipeImages.asFile(recipe.imageLocalPath) ?: recipe.imageUrl
-                if (image != null && (image !is String || image.isNotBlank())) {
-                    item {
-                        AsyncImage(
-                            model = image,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(200.dp),
-                        )
-                    }
-                }
-
                 item {
                     Column(
                         Modifier.padding(16.dp),
@@ -233,7 +275,7 @@ fun RecipeDetailScreen(
                         RecipeMetaLine(
                             totalMinutes = listOfNotNull(recipe.prepMinutes, recipe.cookMinutes)
                                 .takeIf { it.isNotEmpty() }?.sum(),
-                            servings = recipe.servings,
+                            servings = (recipe.servings * session.scale).roundToInt().coerceAtLeast(1),
                             timesCooked = recipe.timesCooked,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -277,7 +319,7 @@ fun RecipeDetailScreen(
 
                 item {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -301,6 +343,30 @@ fun RecipeDetailScreen(
                     }
                 }
 
+                if (state.ingredients.isNotEmpty()) {
+                    item {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Scale",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            scaleOptions.forEach { factor ->
+                                FilterChip(
+                                    selected = session.scale == factor,
+                                    onClick = { vm.setScale(factor) },
+                                    label = { Text(MeasureScaler.label(factor)) },
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if (state.ingredients.isEmpty()) {
                     item {
                         Text(
@@ -312,10 +378,14 @@ fun RecipeDetailScreen(
                     }
                 } else {
                     items(state.ingredients, key = { it.dishIngredientId }) { ing ->
+                        val crossed = ing.dishIngredientId in session.crossed
                         IngredientRow(
                             ing = ing,
-                            onRanOut = { vm.markRanOut(ing.dishIngredientId) },
-                            onHave = { vm.markHave(ing.dishIngredientId) },
+                            scale = session.scale,
+                            crossed = crossed,
+                            onToggle = { vm.toggleCrossed(ing.dishIngredientId) },
+                            onRanOut = if (crossed) null else ({ vm.markRanOut(ing.dishIngredientId) }),
+                            onHave = if (crossed) null else ({ vm.markHave(ing.dishIngredientId) }),
                         )
                     }
                 }
@@ -329,32 +399,22 @@ fun RecipeDetailScreen(
                     }
                 }
 
-                val steps = state.steps
-                val fallback = state.fallbackSteps
-                if (steps.isNotEmpty() || fallback.isNotEmpty()) {
+                if (steps.isNotEmpty()) {
                     item {
                         Text(
-                            "Method",
+                            "Directions",
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
-                }
-                if (steps.isNotEmpty()) {
-                    items(steps, key = { it.id }) { step ->
+                    itemsIndexed(steps) { index, step ->
                         StepRow(
-                            number = step.position + 1,
-                            text = step.text,
-                            minutes = step.minutes,
+                            number = index + 1,
+                            step = step,
+                            highlighted = index == session.currentStep,
+                            onClick = { vm.setStep(index) },
+                            onStartTimer = vm::startTimer,
                         )
-                    }
-                } else {
-                    // Prose from a MealDB import, shown as numbered steps without committing
-                    // the split to the database until the recipe is actually edited.
-                    fallback.forEachIndexed { index, text ->
-                        item(key = "fallback-$index") {
-                            StepRow(number = index + 1, text = text, minutes = null)
-                        }
                     }
                 }
             }
@@ -362,60 +422,79 @@ fun RecipeDetailScreen(
     }
 }
 
+/**
+ * One ingredient: bold scaled amount then the name. Tapping crosses it off. The pantry buttons
+ * are offered only when [onRanOut] / [onHave] are given.
+ */
 @Composable
-private fun IngredientRow(
+internal fun IngredientRow(
     ing: ResolvedIngredient,
-    onRanOut: () -> Unit,
-    onHave: () -> Unit,
+    scale: Double,
+    crossed: Boolean,
+    onToggle: () -> Unit,
+    onRanOut: (() -> Unit)? = null,
+    onHave: (() -> Unit)? = null,
 ) {
+    val amount = MeasureScaler.scale(ing.measure, scale)?.takeIf { it.isNotBlank() }
+    val text = buildAnnotatedString {
+        if (amount != null) {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(amount) }
+            append("  ")
+        }
+        append(ing.rawName.replaceFirstChar { it.uppercase() })
+    }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Dot(availabilityColor(ing.availability))
-        Column(Modifier.weight(1f)) {
-            Text(
-                ing.rawName.replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-            )
-            if (!ing.measure.isNullOrBlank()) {
-                Text(
-                    ing.measure,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyLarge,
+            textDecoration = if (crossed) TextDecoration.LineThrough else null,
+            color = if (crossed) {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+        )
         if (ing.availability == Availability.MISSING) {
-            TextButton(onClick = onHave) { Text("Have it") }
-        } else {
+            if (onHave != null) TextButton(onClick = onHave) { Text("Have it") }
+        } else if (onRanOut != null) {
             TextButton(onClick = onRanOut) { Text("Ran out") }
         }
     }
 }
 
+/** A direction. Tap to make it the current step; times in it can be started as timers. */
 @Composable
-private fun StepRow(number: Int, text: String, minutes: Int?) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+private fun StepRow(
+    number: Int,
+    step: CookStep,
+    highlighted: Boolean,
+    onClick: () -> Unit,
+    onStartTimer: (String, Int) -> Unit,
+) {
+    Surface(
+        color = if (highlighted) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.background,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).clickable(onClick = onClick),
     ) {
-        Text(
-            "$number.",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Column(Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.bodyMedium)
-            if (minutes != null) {
-                Text(
-                    com.lucca.ko.ui.common.formatMinutes(minutes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "$number.",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stepText(step.text), style = MaterialTheme.typography.bodyLarge)
+                TimerChips(step, onStartTimer)
             }
         }
     }
@@ -429,7 +508,9 @@ private fun PlanTargetSheet(
     onConfirm: (LocalDate, MealSlot) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var date by remember { mutableStateOf(LocalDate.now()) }
+    val planView = rememberPlanView()
+    var week by remember(planView.activeWeek) { mutableStateOf(planView.activeWeek) }
+    var day by remember { mutableStateOf(LocalDate.now().dayOfWeek) }
     var slot by remember { mutableStateOf(MealSlot.DINNER) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -439,43 +520,18 @@ private fun PlanTargetSheet(
         ) {
             Text("Add to plan", style = MaterialTheme.typography.titleLarge)
 
-            // The next seven days covers almost every case; anything further out is easier to
-            // do from the plan itself, where you can see the week.
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                (0..6L).forEach { offset ->
-                    val candidate = LocalDate.now().plusDays(offset)
-                    FilterChip(
-                        selected = date == candidate,
-                        onClick = { date = candidate },
-                        label = {
-                            Text(
-                                when (offset) {
-                                    0L -> "Today"
-                                    1L -> "Tomorrow"
-                                    else -> candidate.dayOfWeek
-                                        .getDisplayName(TextStyle.SHORT, Locale.getDefault())
-                                },
-                            )
-                        },
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MealSlot.entries.forEach { s ->
-                    FilterChip(
-                        selected = slot == s,
-                        onClick = { slot = s },
-                        label = { Text(s.label()) },
-                    )
-                }
-            }
+            SlotPickerFields(
+                weeks = planView.weeks,
+                week = week,
+                onWeek = { week = it },
+                day = day,
+                onDay = { day = it },
+                slot = slot,
+                onSlot = { slot = it },
+            )
 
             Button(
-                onClick = { onConfirm(date, slot) },
+                onClick = { onConfirm(FixedWeek.dateFor(week, day), slot) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Add") }
         }

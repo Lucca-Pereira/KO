@@ -36,6 +36,18 @@ object CategoryGuesser {
         "Drinks" to listOf("juice", "wine", "beer", "water", "coffee", "tea"),
     )
 
+    /** Aisles in the order you walk a shop: fresh first, frozen and drinks last. */
+    val aisles: List<String> = listOf(
+        "Produce", "Meat & Fish", "Dairy & Eggs", "Grains & Pasta", "Canned & Jars",
+        "Condiments & Oils", "Spices & Herbs", "Baking", "Frozen", "Drinks", "Other",
+    )
+
+    /** Position of [category] in [aisles]; anything unknown sorts with "Other". */
+    fun aisleRank(category: String): Int {
+        val i = aisles.indexOf(category)
+        return if (i >= 0) i else aisles.size - 1
+    }
+
     fun guess(name: String): String {
         val n = name.lowercase()
         for ((category, keywords) in rules) {

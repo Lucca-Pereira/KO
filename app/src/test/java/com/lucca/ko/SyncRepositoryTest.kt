@@ -109,7 +109,7 @@ class SyncRepositoryTest {
             syncSettings.setLastSyncedAt(0)
         }
         planViewRepository = PlanViewRepository(ApplicationProvider.getApplicationContext())
-        runBlocking { planViewRepository.applyFromSync(com.lucca.ko.data.prefs.PlanView()) }
+        runBlocking { planViewRepository.clear() }
 
         syncRepository = SyncRepository(
             recipeRepository = recipeRepository,

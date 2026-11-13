@@ -65,7 +65,7 @@ fun NutritionHubScreen(
     Scaffold(
         topBar = {
             KoTopBar(
-                title = "Nutrition",
+                title = "Gym",
                 actions = {
                     TextButton(onClick = onOpenSupplements) { Text("Supps") }
                 },

@@ -54,17 +54,20 @@ async def test_shopping_and_pantry_deletes():
         await mcp_server.delete_pantry_item("rice")
 
 
-async def test_plan_remove_one_and_clear_range():
+async def test_plan_remove_one_and_clear_a_week():
     await _recipe()
-    a = await mcp_server.add_to_meal_plan("Pasta", "2026-10-05", "DINNER")
-    await mcp_server.add_to_meal_plan("Pasta", "2026-10-06", "DINNER")
-    await mcp_server.add_to_meal_plan("Pasta", "2026-10-20", "DINNER")
+    await mcp_server.set_plan_view(weeks=2)
+    a = await mcp_server.add_to_meal_plan("Pasta", "MONDAY", "DINNER", week=1)
+    await mcp_server.add_to_meal_plan("Pasta", "TUESDAY", "DINNER", week=1)
+    await mcp_server.add_to_meal_plan("Pasta", "TUESDAY", "DINNER", week=2)
     await mcp_server.remove_from_meal_plan(a["remoteId"])
-    out = await mcp_server.clear_meal_plan("2026-10-05", "2026-10-11")
-    assert out["removed"] == 1
-    assert [e["date"] for e in store.plan_between(None, None)] == ["2026-10-20"]
+    out = await mcp_server.clear_meal_plan(week=1)
+    assert out == {"removed": 1, "week": 1}
+    left = await mcp_server.get_meal_plan()
+    assert [(e["week"], e["weekday"]) for e in left] == [(2, "TUESDAY")]
     with pytest.raises(ToolError):
         await mcp_server.remove_from_meal_plan(a["remoteId"])
+    assert (await mcp_server.clear_meal_plan())["removed"] == 1
 
 
 async def test_sync_delivers_tombstones_once(client):
@@ -78,21 +81,44 @@ async def test_sync_delivers_tombstones_once(client):
 
 
 async def test_plan_view_round_trips_through_claude_and_phone(client):
-    assert await mcp_server.get_plan_view() == {"weeks": 1, "calendar": True}
+    assert await mcp_server.get_plan_view() == {"weeks": 1, "activeWeek": 1}
+    with pytest.raises(ToolError):
+        await mcp_server.set_plan_view(active_week=2)  # a one-week plan has no week 2
     await mcp_server.set_plan_view(weeks=2)
-    await mcp_server.set_plan_view(calendar=False)
-    assert await mcp_server.get_plan_view() == {"weeks": 2, "calendar": False}
+    await mcp_server.set_plan_view(active_week=2)
+    assert await mcp_server.get_plan_view() == {"weeks": 2, "activeWeek": 2}
     with pytest.raises(ToolError):
         await mcp_server.set_plan_view(weeks=3)
     with pytest.raises(ToolError):
         await mcp_server.set_plan_view()
 
     pulled = (await _sync(client, 0)).json()
-    assert pulled["planView"]["weeks"] == 2 and pulled["planView"]["calendar"] is False
+    assert pulled["planView"]["weeks"] == 2 and pulled["planView"]["activeWeek"] == 2
 
     # The phone's newer choice wins; an older one doesn't.
     newer = store.now_millis() + 10_000
-    await _sync(client, 0, push={"planView": {"weeks": 1, "calendar": True, "updatedAt": newer}})
-    assert await mcp_server.get_plan_view() == {"weeks": 1, "calendar": True}
-    await _sync(client, 0, push={"planView": {"weeks": 2, "calendar": True, "updatedAt": 5}})
-    assert await mcp_server.get_plan_view() == {"weeks": 1, "calendar": True}
+    await _sync(
+        client, 0, push={"planView": {"weeks": 2, "activeWeek": 1, "updatedAt": newer}}
+    )
+    assert await mcp_server.get_plan_view() == {"weeks": 2, "activeWeek": 1}
+    await _sync(client, 0, push={"planView": {"weeks": 1, "updatedAt": 5}})
+    assert await mcp_server.get_plan_view() == {"weeks": 2, "activeWeek": 1}
+
+
+async def test_plan_view_from_a_phone_that_predates_active_week(client):
+    """An older app sends `calendar` and no `activeWeek`; it must still be accepted."""
+    newer = store.now_millis() + 10_000
+    await _sync(client, 0, push={"planView": {"weeks": 2, "calendar": True, "updatedAt": newer}})
+    assert await mcp_server.get_plan_view() == {"weeks": 2, "activeWeek": 1}
+
+
+async def test_add_to_meal_plan_defaults_to_the_active_week_and_validates():
+    await _recipe()
+    await mcp_server.set_plan_view(weeks=2, active_week=2)
+    added = await mcp_server.add_to_meal_plan("Pasta", "wed", "LUNCH")
+    assert (added["week"], added["weekday"], added["slot"]) == (2, "WEDNESDAY", "LUNCH")
+    with pytest.raises(ToolError):
+        await mcp_server.add_to_meal_plan("Pasta", "Someday", "LUNCH")
+    await mcp_server.set_plan_view(weeks=1, active_week=1)
+    with pytest.raises(ToolError):
+        await mcp_server.add_to_meal_plan("Pasta", "MONDAY", "LUNCH", week=2)

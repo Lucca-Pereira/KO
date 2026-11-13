@@ -9,6 +9,7 @@ import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.OpenFoodFactsClient
 import com.lucca.ko.data.remote.sync.KoSyncClient
+import com.lucca.ko.data.repair.PlanMaintenance
 import com.lucca.ko.data.repair.StartupRepairs
 import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.data.repo.BodyRepository
@@ -134,6 +135,10 @@ class AppContainer(context: Context) {
 
     val backupRepository: BackupRepository by lazy {
         BackupRepository(database, settingsRepository)
+    }
+
+    val planMaintenance: PlanMaintenance by lazy {
+        PlanMaintenance(mealPlanRepository, planViewRepository)
     }
 
     val startupRepairs: StartupRepairs by lazy {

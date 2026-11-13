@@ -291,5 +291,6 @@ data class ShoppingListItem(
      *  — no edit-sync (checked/unchecked state stays phone-local). */
     val remoteId: String? = null,
     /** Null means never pushed; set once a push of this row succeeds. */
-    val syncedAt: Long? = null,
+    val syncedAt: Long? = null,    /** Free text such as "2 kg" or "3"; null when the item has no amount. */
+    val quantity: String? = null,
 )

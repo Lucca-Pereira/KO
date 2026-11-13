@@ -1,28 +1,40 @@
 package com.lucca.ko.ui.nav
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Kitchen
-import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -32,7 +44,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.lucca.ko.ui.common.LocalOpenSettings
+import com.lucca.ko.ui.common.LocalOpenMenu
 import com.lucca.ko.ui.nutrition.FoodEditScreen
 import com.lucca.ko.ui.nutrition.NutritionHubScreen
 import com.lucca.ko.ui.nutrition.ProfileScreen
@@ -46,14 +58,15 @@ import com.lucca.ko.ui.recipes.RecipePickerScreen
 import com.lucca.ko.ui.recipes.edit.RecipeEditScreen
 import com.lucca.ko.ui.settings.SettingsScreen
 import com.lucca.ko.ui.shopping.ShoppingScreen
+import com.lucca.ko.ui.today.HomeScreen
+import kotlinx.coroutines.launch
 import kotlin.reflect.KClass
 
 /**
- * Bottom-bar destinations.
+ * Main-menu destinations, in the order the drawer lists them.
  *
- * Settings isn't here: it left the bottom bar for a gear that [com.lucca.ko.ui.common.KoTopBar]
- * puts on every screen, root or not — a screen opened once a month didn't deserve one of
- * Material 3's five slots more than Recipes or Gym did.
+ * A drawer rather than a bottom bar: the app has more sections than a bar's five slots, and the
+ * ones still to come (a recipe browser) would have pushed something useful off it.
  */
 private sealed class Dest(
     val route: Any,
@@ -61,50 +74,63 @@ private sealed class Dest(
     val label: String,
     val icon: ImageVector,
 ) {
-    data object Pantry : Dest(PantryRoute, PantryRoute::class, "Pantry", Icons.Filled.Kitchen)
-    data object Plan : Dest(PlanRoute, PlanRoute::class, "Plan", Icons.Filled.CalendarMonth)
+    data object Today : Dest(TodayRoute, TodayRoute::class, "Today", Icons.Filled.WbSunny)
     data object Recipes : Dest(RecipesRoute, RecipesRoute::class, "Recipes", Icons.AutoMirrored.Filled.MenuBook)
-    data object Nutrition :
-        Dest(NutritionRoute, NutritionRoute::class, "Gym", Icons.Filled.FitnessCenter)
-    data object Shopping :
-        Dest(ShoppingRoute, ShoppingRoute::class, "Shopping", Icons.Filled.ShoppingCart)
+    data object Groceries : Dest(ShoppingRoute, ShoppingRoute::class, "Groceries", Icons.Filled.ShoppingCart)
+    data object Pantry : Dest(PantryRoute, PantryRoute::class, "Pantry", Icons.Filled.Kitchen)
+    data object Meals : Dest(PlanRoute, PlanRoute::class, "Meals", Icons.Filled.CalendarMonth)
+    data object Gym : Dest(NutritionRoute, NutritionRoute::class, "Gym", Icons.Filled.FitnessCenter)
+    data object Settings : Dest(SettingsRoute, SettingsRoute::class, "Settings", Icons.Filled.Settings)
 }
 
-private val bottomDests =
-    listOf(Dest.Pantry, Dest.Plan, Dest.Recipes, Dest.Nutrition, Dest.Shopping)
+private val menuDests = listOf(
+    Dest.Today, Dest.Recipes, Dest.Groceries, Dest.Pantry, Dest.Meals, Dest.Gym, Dest.Settings,
+)
 
 @Composable
 fun KoRoot() {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentDestination = backStack?.destination
-    val showBottomBar = bottomDests.any { dest ->
-        currentDestination?.hierarchy?.any { it.hasRoute(dest.routeClass) } == true
-    }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-    CompositionLocalProvider(LocalOpenSettings provides { navController.navigate(SettingsRoute) }) {
-        Scaffold(
-            bottomBar = {
-                if (showBottomBar) {
-                    NavigationBar {
-                        bottomDests.forEach { dest ->
-                            val selected =
-                                currentDestination?.hierarchy?.any { it.hasRoute(dest.routeClass) } == true
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { navController.switchTab(dest.route) },
-                                icon = { Icon(dest.icon, contentDescription = dest.label) },
-                                label = { Text(dest.label) },
-                            )
+    // Back closes an open menu before it leaves the screen underneath.
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+
+    CompositionLocalProvider(LocalOpenMenu provides { scope.launch { drawerState.open() } }) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(Modifier.width(280.dp)) {
+                    Text(
+                        "KO Kitchen",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 28.dp, top = 20.dp, bottom = 12.dp),
+                    )
+                    menuDests.forEach { dest ->
+                        if (dest == Dest.Settings) {
+                            HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
                         }
+                        NavigationDrawerItem(
+                            selected = currentDestination?.hierarchy
+                                ?.any { it.hasRoute(dest.routeClass) } == true,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                navController.switchSection(dest.route)
+                            },
+                            icon = { Icon(dest.icon, contentDescription = null) },
+                            label = { Text(dest.label) },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                        )
                     }
                 }
             },
-        ) { innerPadding ->
-            Column(Modifier.padding(innerPadding)) {
+        ) {
+            Column(Modifier.fillMaxSize()) {
                 NavHost(
                     navController = navController,
-                    startDestination = PantryRoute,
+                    startDestination = TodayRoute,
                     // Forward moves push in from the right and fade; back moves reverse that —
                     // a screen change reads as "you went somewhere," not a cut.
                     enterTransition = {
@@ -116,6 +142,16 @@ fun KoRoot() {
                         fadeOut(tween(150)) + slideOutHorizontally(tween(220)) { it / 6 }
                     },
                 ) {
+                    composable<TodayRoute> {
+                        HomeScreen(
+                            onOpenRecipe = { id -> navController.navigate(RecipeDetailRoute(id)) },
+                            onOpenMeals = { navController.switchSection(PlanRoute) },
+                            onOpenGroceries = { navController.switchSection(ShoppingRoute) },
+                            onOpenPantry = { navController.switchSection(PantryRoute) },
+                            onOpenGym = { navController.switchSection(NutritionRoute) },
+                        )
+                    }
+
                     composable<PantryRoute> { PantryScreen() }
 
                     composable<PlanRoute> {
@@ -159,7 +195,7 @@ fun KoRoot() {
 
                     composable<ShoppingRoute> { ShoppingScreen() }
 
-                    composable<SettingsRoute> { SettingsScreen(onBack = { navController.popBackStack() }) }
+                    composable<SettingsRoute> { SettingsScreen() }
 
                     composable<RecipeDetailRoute> {
                         RecipeDetailScreen(
@@ -198,7 +234,8 @@ fun KoRoot() {
     }
 }
 
-private fun NavController.switchTab(route: Any) {
+/** Jumps to a main-menu section, keeping each section's own state for when you come back. */
+private fun NavController.switchSection(route: Any) {
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -215,11 +252,10 @@ private fun NavController.openRecipeReplacingCurrent(recipeId: Long) {
     navigate(RecipeDetailRoute(recipeId))
 }
 
-/** "Tuesday 16 Sep · Dinner", for the picker's subtitle. */
+/** "Tuesday · Dinner", for the picker's subtitle. [date] is a fixed-week slot date. */
 private fun dayLabel(date: String, slot: String): String {
     val parsed = runCatching { java.time.LocalDate.parse(date) }.getOrNull() ?: return ""
     val weekday = parsed.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
-    val month = parsed.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
     val slotLabel = slot.lowercase().replaceFirstChar { it.uppercase() }
-    return "$weekday ${parsed.dayOfMonth} $month · $slotLabel"
+    return "$weekday · $slotLabel"
 }

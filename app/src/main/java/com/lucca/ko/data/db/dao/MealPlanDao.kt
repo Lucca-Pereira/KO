@@ -50,8 +50,20 @@ interface MealPlanDao {
     @Update
     suspend fun update(entry: MealPlanEntry)
 
-    @Query("UPDATE meal_plan SET date = :date, slot = :slot WHERE id = :id")
-    suspend fun move(id: Long, date: String, slot: MealSlot)
+    /**
+     * Moves an entry by re-issuing it under a new [remoteId]. Plan entries only ever push as new
+     * rows, so a plain UPDATE would never reach the NAS; a fresh id makes the next sync push the
+     * new position and drop the old one (it is no longer in the list of ids the phone holds).
+     */
+    @Query(
+        "UPDATE meal_plan SET date = :date, slot = :slot, remoteId = :remoteId, syncedAt = NULL " +
+            "WHERE id = :id",
+    )
+    suspend fun move(id: Long, date: String, slot: MealSlot, remoteId: String)
+
+    /** The weekly reset: every tick comes off, the meals stay. */
+    @Query("UPDATE meal_plan SET cooked = 0 WHERE cooked = 1")
+    suspend fun clearCooked()
 
     @Query("UPDATE meal_plan SET servings = :servings WHERE id = :id")
     suspend fun setServings(id: Long, servings: Double)
