@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.repo.PantryRepository
 import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.StockStatus
+import com.lucca.ko.domain.pantry.isUseSoon
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,6 +20,8 @@ data class PantryUiState(
     val loading: Boolean = true,
 )
 
+const val USE_SOON_SECTION = "Use soon"
+
 data class PantrySection(val category: String, val items: List<PantryItem>)
 
 class PantryViewModel(private val repo: PantryRepository) : ViewModel() {
@@ -28,7 +31,11 @@ class PantryViewModel(private val repo: PantryRepository) : ViewModel() {
     val state = combine(repo.pantry, query) { items, q ->
         val filtered = if (q.isBlank()) items
         else items.filter { it.name.contains(q.trim(), ignoreCase = true) }
-        val sections = filtered
+        val useSoon = filtered.filter { isUseSoon(it.expiresAt) }.sortedBy { it.expiresAt }
+        val sections = listOfNotNull(
+            if (useSoon.isEmpty()) null else PantrySection(USE_SOON_SECTION, useSoon),
+        ) + filtered
+            .filterNot { isUseSoon(it.expiresAt) }
             .groupBy { it.category.ifBlank { "Other" } }
             .toSortedMap()
             .map { (cat, list) -> PantrySection(cat, list.sortedBy { it.name.lowercase() }) }
@@ -51,8 +58,10 @@ class PantryViewModel(private val repo: PantryRepository) : ViewModel() {
         status: StockStatus,
         quantity: String?,
         note: String?,
+        expiresAt: Long?,
     ) = viewModelScope.launch {
-        repo.savePantryItem(id, name, category, status, quantity, note)
+        val saved = repo.savePantryItem(id, name, category, status, quantity, note)
+        if (saved != null) repo.setExpiry(saved, expiresAt)
     }
 
     companion object {

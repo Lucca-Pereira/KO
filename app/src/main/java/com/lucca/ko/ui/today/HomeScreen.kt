@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.domain.Availability
+import com.lucca.ko.domain.pantry.daysUntilExpiry
+import com.lucca.ko.domain.pantry.expiryLabel
 import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.LoadingBox
 import com.lucca.ko.ui.common.availabilityColor
@@ -87,6 +89,29 @@ fun HomeScreen(
                         onToggleCooked = { vm.setCooked(meal.entryId, !meal.cooked) },
                         onAddMissing = { meal.recipeId?.let(vm::addMissingToGroceries) },
                     )
+                }
+            }
+
+            if (state.useSoon.isNotEmpty()) {
+                item {
+                    HomeCard(onClick = onOpenPantry) {
+                        Text("Use soon", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.tertiary)
+                        state.useSoon.take(4).forEach { s ->
+                            Text(
+                                "${s.name} · ${expiryLabel(s.expiresAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (daysUntilExpiry(s.expiresAt) < 0) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (state.useSoon.size > 4) {
+                            Text(
+                                "+${state.useSoon.size - 4} more",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 

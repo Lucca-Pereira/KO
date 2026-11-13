@@ -84,6 +84,12 @@ class PantryRepository(
         syncShoppingForPantry(item.copy(status = status))
     }
 
+    /** Sets or clears the phone-only expiry (epoch day). Deliberately doesn't touch updatedAt: it never syncs. */
+    suspend fun setExpiry(id: Long, epochDay: Long?) {
+        val item = pantryDao.byId(id) ?: return
+        pantryDao.update(item.copy(expiresAt = epochDay))
+    }
+
     suspend fun deletePantryItem(id: Long) = pantryDao.delete(id)
 
     suspend fun setSearchName(item: PantryItem, english: String) {

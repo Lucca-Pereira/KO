@@ -4,7 +4,10 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lucca.ko.BuildConfig
 import com.lucca.ko.data.BackupRepository
+import com.lucca.ko.data.remote.UpdateChecker
+import com.lucca.ko.data.remote.UpdateResult
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.repo.AgentImportRepository
 import com.lucca.ko.data.repo.SyncOutcome
@@ -48,12 +51,29 @@ sealed interface SyncState {
     data class Failed(val message: String) : SyncState
 }
 
+sealed interface UpdateUiState {
+    data object Idle : UpdateUiState
+
+    data object Checking : UpdateUiState
+
+    data class Result(val result: UpdateResult) : UpdateUiState
+}
+
 class SettingsViewModel(
     private val agentImportRepo: AgentImportRepository,
     private val backupRepo: BackupRepository,
     private val syncSettingsRepo: SyncSettingsRepository,
     private val syncRepo: SyncRepository,
+    private val updateChecker: UpdateChecker,
 ) : ViewModel() {
+
+    private val _update = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val update = _update.asStateFlow()
+
+    fun checkForUpdates() = viewModelScope.launch {
+        _update.value = UpdateUiState.Checking
+        _update.value = UpdateUiState.Result(updateChecker.check(BuildConfig.VERSION_NAME))
+    }
 
     private val _agentImport = MutableStateFlow<AgentImportState>(AgentImportState.Idle)
     val agentImport = _agentImport.asStateFlow()
@@ -171,6 +191,7 @@ class SettingsViewModel(
                 backupRepo = it.backupRepository,
                 syncSettingsRepo = it.syncSettingsRepository,
                 syncRepo = it.syncRepository,
+                updateChecker = it.updateChecker,
             )
         }
     }

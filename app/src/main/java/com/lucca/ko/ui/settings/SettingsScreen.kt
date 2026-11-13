@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucca.ko.BuildConfig
+import com.lucca.ko.data.remote.UpdateResult
 import com.lucca.ko.ui.common.KoTopBar
 import java.text.DateFormat
 import java.util.Date
@@ -53,6 +54,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
     val savedNasUrl by vm.nasUrl.collectAsStateWithLifecycle()
     val savedNasToken by vm.nasToken.collectAsStateWithLifecycle()
     val lastSyncedAt by vm.lastSyncedAt.collectAsStateWithLifecycle()
+    val update by vm.update.collectAsStateWithLifecycle()
 
     var nasUrlField by remember { mutableStateOf("") }
     var nasTokenField by remember { mutableStateOf("") }
@@ -111,48 +113,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Ask Claude for recipes", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "KO doesn't call any AI itself — no API key, no billing. Instead, ask Claude " +
-                    "for a recipe, a pantry update, or a shopping list addition wherever you " +
-                    "already talk to it (a Claude Code session, claude.ai). Ask it to write a " +
-                    "KO Kitchen import file, save that file to your phone, then import it here. " +
-                    "Editing an existing recipe this way is undoable, same as a manual edit.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = {
-                    agentImportLauncher.launch(
-                        arrayOf("application/json", "application/octet-stream", "text/plain"),
-                    )
-                },
-                enabled = agentImport != AgentImportState.Working,
-            ) { Text("Import from Claude") }
-            when (val a = agentImport) {
-                AgentImportState.Working -> Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    CircularProgressIndicator(Modifier.padding(4.dp))
-                    Text("Importing…", style = MaterialTheme.typography.bodySmall)
-                }
-                is AgentImportState.Done -> Text(
-                    a.message,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                is AgentImportState.Failed -> Text(
-                    a.message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                AgentImportState.Idle -> {}
-            }
-
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-            Text("NAS sync", style = MaterialTheme.typography.titleMedium)
+            SectionHeader("Sync")
+            Text("NAS sync", style = MaterialTheme.typography.titleSmall)
             Text(
                 "If you're running the KO sync service on your own NAS, point the app at it here " +
                     "and Claude (with the KO connector added) can see your pantry and diary, " +
@@ -216,9 +178,51 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 SyncState.Idle -> {}
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionHeader("Data & backup")
+            Text("Ask Claude for recipes", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "KO doesn't call any AI itself — no API key, no billing. Instead, ask Claude " +
+                    "for a recipe, a pantry update, or a shopping list addition wherever you " +
+                    "already talk to it (a Claude Code session, claude.ai). Ask it to write a " +
+                    "KO Kitchen import file, save that file to your phone, then import it here. " +
+                    "Editing an existing recipe this way is undoable, same as a manual edit.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = {
+                    agentImportLauncher.launch(
+                        arrayOf("application/json", "application/octet-stream", "text/plain"),
+                    )
+                },
+                enabled = agentImport != AgentImportState.Working,
+            ) { Text("Import from Claude") }
+            when (val a = agentImport) {
+                AgentImportState.Working -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.padding(4.dp))
+                    Text("Importing…", style = MaterialTheme.typography.bodySmall)
+                }
+                is AgentImportState.Done -> Text(
+                    a.message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is AgentImportState.Failed -> Text(
+                    a.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                AgentImportState.Idle -> {}
+            }
 
-            Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
+
+
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+            Text("Backup & restore", style = MaterialTheme.typography.titleSmall)
             Text(
                 "Export everything you've entered — pantry, dishes, meal plan and shopping " +
                     "list — to a JSON file you can keep. If you ever reinstall the app, import " +
@@ -261,9 +265,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 BackupState.Idle -> {}
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-            Text("About", style = MaterialTheme.typography.titleMedium)
+            SectionHeader("About")
             Text(
                 "KO Kitchen v${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -274,6 +276,52 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel(factory = SettingsViewModel
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            OutlinedButton(
+                onClick = { vm.checkForUpdates() },
+                enabled = update != UpdateUiState.Checking,
+            ) { Text("Check for updates") }
+            when (val u = update) {
+                UpdateUiState.Idle -> {}
+                UpdateUiState.Checking -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.padding(4.dp))
+                    Text("Checking…", style = MaterialTheme.typography.bodySmall)
+                }
+                is UpdateUiState.Result -> when (val r = u.result) {
+                    UpdateResult.UpToDate -> Text("Up to date", style = MaterialTheme.typography.bodySmall)
+                    UpdateResult.NoReleases -> Text("No releases yet", style = MaterialTheme.typography.bodySmall)
+                    is UpdateResult.Available -> {
+                        Text(
+                            "Version ${r.version} available",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Button(onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(r.downloadUrl),
+                                    ),
+                                )
+                            }
+                        }) { Text("Download") }
+                    }
+                    is UpdateResult.Failed -> Text(
+                        r.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
 }

@@ -45,6 +45,7 @@ data class PantryItemV2(
     // just treats the restored row as never-pushed, same as the migration does for old rows.
     val remoteId: String? = null,
     val syncedAt: Long? = null,
+    val expiresAt: Long? = null,
 )
 
 @Serializable
@@ -264,10 +265,12 @@ data class KoBackupV2(
 
 fun PantryItem.toV2() = PantryItemV2(
     id, name, normalizedName, category, status, quantity, note, searchName, updatedAt, remoteId, syncedAt,
+    expiresAt,
 )
 
 fun PantryItemV2.toEntity() = PantryItem(
     id, name, normalizedName, category, status, quantity, note, searchName, updatedAt, remoteId, syncedAt,
+    expiresAt,
 )
 
 fun Recipe.toV2() = RecipeV2(

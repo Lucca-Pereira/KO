@@ -3,6 +3,12 @@
 Upgrade notes per release. Install a new APK over the old one — don't uninstall — unless a
 note says otherwise.
 
+## v0.15.0 -- web recipe import, pantry expiry, settings groups, update check
+
+- Settings regrouped into Sync, Data & backup and About. About has a **Check for updates** button (only when pressed) that asks GitHub for the latest release and links to the APK.
+- Recipes menu: **Import from web page**. Paste a URL and the app reads the page's schema.org recipe data (ingredients, steps, times, servings) directly, with no AI involved.
+- Pantry items can have an optional expiry date (phone-only, not synced; included in backups). Items expiring within 3 days float to a "Use soon" section and show on Today.
+
 ## v0.14.0 — recipe view and cook mode
 
 - Recipes have no photo block any more. Ingredients show a bold amount, and a scale row

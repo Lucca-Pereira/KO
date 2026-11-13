@@ -526,8 +526,15 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+/** v10 -> v11: pantry items can carry an expiry date (epoch day). Existing rows have none. */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE pantry_items ADD COLUMN expiresAt INTEGER")
+    }
+}
+
 /** Every migration the database knows about, in order. */
 val KO_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-    MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
+    MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
 )

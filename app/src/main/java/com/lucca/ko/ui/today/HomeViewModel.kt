@@ -17,6 +17,8 @@ import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SupplementRepository
 import com.lucca.ko.domain.Availability
 import com.lucca.ko.domain.PantryResolver
+import com.lucca.ko.domain.pantry.isUseSoon
+import kotlinx.coroutines.flow.map
 import com.lucca.ko.domain.plan.FixedWeek
 import com.lucca.ko.ui.koFactory
 import java.time.LocalDate
@@ -57,7 +59,10 @@ data class HomeUiState(
     val pantryOut: Int = 0,
     val supplementsTaken: Int = 0,
     val supplementsTotal: Int = 0,
+    val useSoon: List<UseSoonItem> = emptyList(),
 )
+
+data class UseSoonItem(val name: String, val expiresAt: Long)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(
@@ -96,7 +101,13 @@ class HomeViewModel(
         nutrition.observeTarget(today),
     ) { totals: DayTotals, target -> totals to target?.kcal }
 
-    val state = combine(meals, kitchen, eaten, supplements.observeStatus(today)) { meals, kitchen, eaten, supps ->
+    /** Pantry items expiring within [USE_SOON_DAYS] (or already expired), soonest first. */
+    private val useSoon = pantry.pantry.map { items ->
+        items.filter { isUseSoon(it.expiresAt, today) }.sortedBy { it.expiresAt }
+            .map { UseSoonItem(it.name, it.expiresAt!!) }
+    }
+
+    val state = combine(meals, kitchen, eaten, supplements.observeStatus(today), useSoon) { meals, kitchen, eaten, supps, soon ->
         val (totals, target) = eaten
         HomeUiState(
             loading = false,
@@ -112,6 +123,7 @@ class HomeViewModel(
             pantryOut = kitchen.third,
             supplementsTaken = supps.count { it.takenToday },
             supplementsTotal = supps.size,
+            useSoon = soon,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

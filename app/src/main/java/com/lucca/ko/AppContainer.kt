@@ -47,6 +47,14 @@ class AppContainer(context: Context) {
 
     private val openFoodFactsClient: OpenFoodFactsClient by lazy { OpenFoodFactsClient(httpClient) }
 
+    val recipePageClient: com.lucca.ko.data.remote.RecipePageClient by lazy {
+        com.lucca.ko.data.remote.RecipePageClient(httpClient)
+    }
+
+    val updateChecker: com.lucca.ko.data.remote.UpdateChecker by lazy {
+        com.lucca.ko.data.remote.UpdateChecker(httpClient)
+    }
+
     val pantryRepository: PantryRepository by lazy {
         PantryRepository(database.pantryDao(), database.shoppingDao())
     }

@@ -97,8 +97,9 @@ repository per feature area — Pantry/Recipe/MealPlan/Shopping/Nutrition/Body/
 Supplement/Revision/AgentImport/Backup), `data/prefs/` (DataStore-backed settings;
 `SettingsRepository` holds only one-shot repair flags now — NAS URL/API-key storage
 has been added and removed twice this project's life, check before assuming it
-exists), `data/remote/` (external HTTP: `OpenFoodFactsClient` for barcode lookups —
-the only network call the app makes), `domain/` (pure, unit-tested logic:
+exists), `data/remote/` (external HTTP: `OpenFoodFactsClient` for barcode lookups,
+`RecipePageClient` for the web recipe-import fetch, `UpdateChecker` for the
+button-press GitHub release check — the only network calls the app makes), `domain/` (pure, unit-tested logic:
 ingredient normalization/matching, measure parsing, nutrition math — no Android/Room
 imports), `ui/<feature>/` (Compose screen + ViewModel per screen, `koFactory` in
 `ui/VmFactory.kt` for boilerplate-free ViewModel construction from `AppContainer`).

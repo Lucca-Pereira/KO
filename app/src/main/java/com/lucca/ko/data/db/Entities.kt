@@ -53,6 +53,8 @@ data class PantryItem(
     val remoteId: String? = null,
     /** Null means never pushed. Set to the server's clock time once a push of this row succeeds. */
     val syncedAt: Long? = null,
+    /** Optional best-before date as an epoch day (LocalDate.toEpochDay). Phone-only: never synced. */
+    val expiresAt: Long? = null,
 )
 
 /**

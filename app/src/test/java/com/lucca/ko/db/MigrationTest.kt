@@ -11,6 +11,7 @@ import com.lucca.ko.data.db.MIGRATION_5_6
 import com.lucca.ko.data.db.MIGRATION_6_7
 import com.lucca.ko.data.db.MIGRATION_7_8
 import com.lucca.ko.data.db.MIGRATION_8_9
+import com.lucca.ko.data.db.MIGRATION_10_11
 import com.lucca.ko.data.db.MIGRATION_9_10
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -584,6 +585,24 @@ class MigrationTest {
         migrateShoppingTo10().use { db ->
             assertEquals("flour", db.text("SELECT name FROM shopping_items WHERE id = 99"))
             assertNull(db.longOrNull("SELECT quantity FROM shopping_items WHERE id = 99"))
+        }
+    }
+
+    private fun migrateTo11(): SupportSQLiteDatabase {
+        migrateShoppingTo10().close()
+        return helper.runMigrationsAndValidate(TEST_DB, 11, true, MIGRATION_10_11)
+    }
+
+    @Test
+    fun migrate10To11_validatesAgainstTheEntities() {
+        migrateTo11().close()
+    }
+
+    @Test
+    fun migrate10To11_existingPantryRowsSurviveWithNoExpiry() {
+        migrateTo11().use { db ->
+            assertEquals("Cebolla", db.text("SELECT name FROM pantry_items WHERE id = 1"))
+            assertNull(db.longOrNull("SELECT expiresAt FROM pantry_items WHERE id = 1"))
         }
     }
 }

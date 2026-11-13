@@ -62,6 +62,46 @@ fun RecipeListScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var menuOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
+    var importOpen by remember { mutableStateOf(false) }
+    var importUrl by remember { mutableStateOf("") }
+    val importing by vm.importing.collectAsStateWithLifecycle()
+    val importError by vm.importError.collectAsStateWithLifecycle()
+
+    if (importOpen) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!importing) { importOpen = false; vm.clearImportError() } },
+            title = { Text("Import from a web page") },
+            text = {
+                OutlinedTextField(
+                    value = importUrl,
+                    onValueChange = { importUrl = it },
+                    label = { Text("Recipe URL") },
+                    singleLine = true,
+                    enabled = !importing,
+                    isError = importError != null,
+                    supportingText = { importError?.let { Text(it) } },
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !importing && importUrl.isNotBlank(),
+                    onClick = {
+                        vm.importFromUrl(importUrl) { id ->
+                            importOpen = false
+                            importUrl = ""
+                            onOpenRecipe(id)
+                        }
+                    },
+                ) { Text(if (importing) "Importing..." else "Import") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !importing,
+                    onClick = { importOpen = false; vm.clearImportError() },
+                ) { Text("Cancel") }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -106,6 +146,11 @@ fun RecipeListScreen(
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Import from web page") },
+                            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                            onClick = { menuOpen = false; importOpen = true },
+                        )
                         DropdownMenuItem(
                             text = { Text("Find duplicates") },
                             leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },

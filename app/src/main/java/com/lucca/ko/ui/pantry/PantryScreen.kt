@@ -17,6 +17,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +56,9 @@ import com.lucca.ko.data.db.PRESET_CATEGORIES
 import com.lucca.ko.data.db.PantryItem
 import com.lucca.ko.data.db.StockStatus
 import com.lucca.ko.domain.CategoryGuesser
+import com.lucca.ko.domain.pantry.USE_SOON_DAYS
+import com.lucca.ko.domain.pantry.daysUntilExpiry
+import com.lucca.ko.domain.pantry.expiryLabel
 import com.lucca.ko.ui.common.EmptyState
 import com.lucca.ko.ui.common.KoTopBar
 import com.lucca.ko.ui.common.SectionHeader
@@ -126,13 +133,13 @@ fun PantryScreen(vm: PantryViewModel = viewModel(factory = PantryViewModel.Facto
             PantryEditor(
                 original = current,
                 onDelete = current?.let { item -> { vm.delete(item.id); close() } },
-                onSave = { name, category, status, qty, note ->
-                    vm.save(current?.id, name, category, status, qty, note)
+                onSave = { name, category, status, qty, note, expiry ->
+                    vm.save(current?.id, name, category, status, qty, note, expiry)
                     close()
                 },
                 onSaveAndContinue = if (current == null) {
-                    { name, category, status, qty, note ->
-                        vm.save(null, name, category, status, qty, note)
+                    { name, category, status, qty, note, expiry ->
+                        vm.save(null, name, category, status, qty, note, expiry)
                     }
                 } else null,
             )
@@ -159,18 +166,33 @@ private fun PantryRow(item: PantryItem, onCycle: () -> Unit, onClick: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            item.expiresAt?.let { exp ->
+                val d = daysUntilExpiry(exp)
+                Text(
+                    expiryLabel(exp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        d < 0 -> MaterialTheme.colorScheme.error
+                        d <= USE_SOON_DAYS -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
         }
         Box(Modifier.clickable(onClick = onCycle)) { StatusPill(item.status) }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PantryEditor(
     original: PantryItem?,
     onDelete: (() -> Unit)?,
-    onSave: (String, String, StockStatus, String?, String?) -> Unit,
-    onSaveAndContinue: ((String, String, StockStatus, String?, String?) -> Unit)?,
+    onSave: (String, String, StockStatus, String?, String?, Long?) -> Unit,
+    onSaveAndContinue: ((String, String, StockStatus, String?, String?, Long?) -> Unit)?,
 ) {
+    var expiry by remember { mutableStateOf(original?.expiresAt) }
+    var showPicker by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(original?.name.orEmpty()) }
     var category by remember { mutableStateOf(original?.category ?: "Other") }
     var status by remember { mutableStateOf(original?.status ?: StockStatus.IN_STOCK) }
@@ -193,11 +215,12 @@ private fun PantryEditor(
 
     fun addAnother() {
         if (name.isBlank() || onSaveAndContinue == null) return
-        onSaveAndContinue(name, category, status, quantity, note)
+        onSaveAndContinue(name, category, status, quantity, note, expiry)
         addedCount++
         name = ""
         quantity = ""
         note = ""
+        expiry = null
         if (!categoryTouched) category = "Other"
         runCatching { nameFocus.requestFocus() }
     }
@@ -283,6 +306,37 @@ private fun PantryEditor(
             modifier = Modifier.fillMaxWidth(),
         )
 
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(onClick = { showPicker = true }) {
+                Text(
+                    expiry?.let { "Expires " + java.time.LocalDate.ofEpochDay(it) } ?: "Set expiry date",
+                )
+            }
+            if (expiry != null) {
+                TextButton(onClick = { expiry = null }) { Text("Clear") }
+            }
+        }
+
+        if (showPicker) {
+            val pickerState = rememberDatePickerState(
+                initialSelectedDateMillis = expiry?.let { it * 86_400_000L },
+            )
+            DatePickerDialog(
+                onDismissRequest = { showPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        // The picker works in UTC millis, so floor-dividing gives the picked epoch day.
+                        pickerState.selectedDateMillis?.let { expiry = Math.floorDiv(it, 86_400_000L) }
+                        showPicker = false
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } },
+            ) { DatePicker(state = pickerState) }
+        }
+
         if (onSaveAndContinue != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -291,13 +345,13 @@ private fun PantryEditor(
                     modifier = Modifier.weight(1f),
                 ) { Text("Save & add another") }
                 OutlinedButton(
-                    onClick = { onSave(name, category, status, quantity, note) },
+                    onClick = { onSave(name, category, status, quantity, note, expiry) },
                     enabled = name.isNotBlank() || addedCount > 0,
                 ) { Text(if (name.isBlank()) "Done" else "Save & close") }
             }
         } else {
             Button(
-                onClick = { onSave(name, category, status, quantity, note) },
+                onClick = { onSave(name, category, status, quantity, note, expiry) },
                 enabled = name.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save") }

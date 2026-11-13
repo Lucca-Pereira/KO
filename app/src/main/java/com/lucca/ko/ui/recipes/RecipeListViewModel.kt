@@ -3,6 +3,7 @@ package com.lucca.ko.ui.recipes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucca.ko.data.db.relations.RecipeWithDetails
+import com.lucca.ko.data.remote.RecipePageClient
 import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.ui.koFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +51,34 @@ data class RecipeListUiState(
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class RecipeListViewModel(private val recipes: RecipeRepository) : ViewModel() {
+class RecipeListViewModel(
+    private val recipes: RecipeRepository,
+    private val pages: RecipePageClient,
+) : ViewModel() {
+
+    val importing = MutableStateFlow(false)
+    val importError = MutableStateFlow<String?>(null)
+
+    /** Fetches [url], saves the recipe and reports its id through [onDone]. */
+    fun importFromUrl(url: String, onDone: (Long) -> Unit) {
+        if (importing.value) return
+        importing.value = true
+        importError.value = null
+        viewModelScope.launch {
+            try {
+                onDone(recipes.saveDraft(pages.fetch(url)))
+            } catch (e: RecipePageClient.ImportException) {
+                importError.value = e.message
+            } catch (e: Exception) {
+                importError.value = "Import failed."
+            } finally {
+                importing.value = false
+            }
+        }
+    }
+
+    fun clearImportError() { importError.value = null }
+
 
     private val query = MutableStateFlow("")
     private val activeTag = MutableStateFlow<String?>(null)
@@ -101,6 +129,6 @@ class RecipeListViewModel(private val recipes: RecipeRepository) : ViewModel() {
         viewModelScope.launch { recipes.setFavourite(id, favourite) }
 
     companion object {
-        val Factory = koFactory { RecipeListViewModel(it.recipeRepository) }
+        val Factory = koFactory { RecipeListViewModel(it.recipeRepository, it.recipePageClient) }
     }
 }
