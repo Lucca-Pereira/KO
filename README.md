@@ -16,15 +16,26 @@ Kotlin · Jetpack Compose · Room · Python · FastAPI · MCP · Docker · Tails
 ## What it does
 
 **Kitchen**
-- **Pantry** — every product and spice, each *In stock*, *Low* or *Out*.
-- **Recipes** — a fully editable library (photo, servings, times, tags, notes, ingredients,
-  steps), with every ingredient colour-coded against the pantry: green if you have it, red if
-  you don't. Marking one *ran out* updates the pantry and the shopping list in one tap.
-- **Meal plan** — a fixed week (or a two-week rotation you switch by hand) built from the
-  library; tick meals off as cooked, and the ticks clear themselves each Monday.
+- **Pantry** — every product and spice, each *In stock*, *Low* or *Out*, with an optional
+  expiry date: items going off soon float to a "Use soon" section here and on Today.
+- **Recipes** — a fully editable library (servings, times, tags, notes, ingredients, steps),
+  sortable by name, newest, most cooked or quickest, with every ingredient colour-coded against
+  the pantry: green if you have it, red if you don't. Scale the servings and the amounts follow;
+  cross ingredients off as you go; marking one *ran out* updates the pantry and the shopping list
+  in one tap. **Import from a web page** reads a recipe's own structured data from a pasted URL —
+  no AI involved.
+- **Cook mode** — one step at a time with the screen kept awake, timers detected from the step
+  text, an ingredients sheet, and optional read-aloud.
+- **Meal plan** — a fixed week of lunches and dinners (or a two-week rotation you switch by
+  hand) built from the library; tick meals off as cooked, and the ticks clear themselves each
+  Monday.
 - **Today** — the start screen: this weekday's meals and whether the pantry covers them,
-  calories so far, and what's on the shopping list.
-- **Shopping list** — fills itself from whatever runs out; ticking an item off restocks it.
+  calories so far, what's on the shopping list, and what to use up soon.
+- **Shopping list** — fills itself from whatever runs out and from recipes (scaled), ordered by
+  supermarket aisle. Items carry an amount ("2 kg potatoes"); adding the same item again adds the
+  amounts together. Ticking an item off restocks it.
+- **Budget** — log expenses by category and set a monthly limit per category; a month view shows
+  spent against limit, going red when you're over.
 
 **Gym**
 - **Food diary** — barcode scanning (Open Food Facts), a bundled table of common foods,
@@ -41,7 +52,8 @@ Kotlin · Jetpack Compose · Room · Python · FastAPI · MCP · Docker · Tails
 - With the sync service running, Claude can read the pantry, recipe library, plan, shopping
   list and food diary, and write back: save recipes, update the pantry, plan meals, add to the
   shopping list, log food (estimating macros itself), tick off supplements, and record
-  weigh-ins — including correcting its own gym entries ("actually it was two eggs").
+  weigh-ins — including correcting its own gym entries ("actually it was two eggs"). It can
+  also log expenses, set category limits and summarise the month's budget.
 
 ## How it works
 
@@ -84,7 +96,7 @@ The parts I'd point a reviewer at:
   always stamped newer than the row it replaces, so a correction made in the same millisecond as
   the original can't silently lose the tie. (Found by a test, not in production.)
 - **Real database migrations, tested.** Room with no destructive fallback: a missing migration
-  crashes on launch rather than quietly wiping someone's pantry. Nine schema versions with
+  crashes on launch rather than quietly wiping someone's pantry. Twelve schema versions with
   hand-written migrations; Robolectric tests seed a realistic v2 database and walk it forward
   through every later migration, asserting both row survival and schema validity at each
   step. Schemas are exported and CI fails if they're stale.
@@ -108,8 +120,8 @@ The parts I'd point a reviewer at:
 | **App** | Kotlin, Jetpack Compose (Material 3), Room (SQLite) with exported schemas, DataStore, OkHttp + kotlinx.serialization, Coil, ML Kit code scanner for barcodes, type-safe Navigation. Single module, manual dependency injection (one `AppContainer`, no Hilt). |
 | **Server** | Python 3.12, FastAPI, FastMCP (MCP over streamable HTTP, Google OAuth proxy), SQLite, Pydantic. Docker Compose. |
 | **Infra** | Self-hosted on a home server; Tailscale Funnel for public HTTPS without opening ports. |
-| **Quality** | 200+ Android unit tests (Robolectric, real in-memory Room — no mocked DAOs, because cascade rules and unique indices *are* the behaviour), 40+ server tests (pytest, httpx ASGI), ruff. |
-| **CI/CD** | GitHub Actions: unit tests, schema-drift check, signed release APK attached to every `v*` tag. |
+| **Quality** | 270+ Android unit tests (Robolectric, real in-memory Room — no mocked DAOs, because cascade rules and unique indices *are* the behaviour), 60+ server tests (pytest, httpx ASGI), ruff. |
+| **CI/CD** | GitHub Actions: unit tests, schema-drift check, signed release APK attached to every `v*` tag. Settings has a **Check for updates** button that finds the latest release and links to its APK (press-only, never automatic). |
 
 ## Project layout
 
@@ -117,12 +129,12 @@ The parts I'd point a reviewer at:
 app/src/main/java/com/lucca/ko/
   data/db/        Room entities, DAOs, migrations
   data/repo/      one repository per feature, plus Sync / GymSync / AgentImport / Backup
-  data/remote/    Open Food Facts and sync HTTP clients
+  data/remote/    HTTP clients: sync, Open Food Facts, web recipe import, update check
   domain/         pure, unit-tested logic: ingredient matching, measures, nutrition maths
   ui/<feature>/   a Compose screen + ViewModel per screen
 server/ko_sync/
   api/rest.py     the phone's sync endpoint
-  mcp_server.py   kitchen MCP tools · mcp_gym.py gym MCP tools
+  mcp_server.py   kitchen MCP tools · mcp_gym.py gym tools · mcp_budget.py budget tools
   store.py        SQLite store · google_auth.py OAuth + allowlist · config.py
 ```
 
@@ -188,8 +200,8 @@ anything — and editing an existing recipe snapshots it first, so it's one tap 
 
 `recipeId` omitted or `0` creates a recipe; an existing id replaces it wholesale. Pantry names
 match case-insensitively; status is `IN_STOCK` / `LOW` / `OUT`. A plan entry's `recipeTitle`
-must match a saved recipe or one in the same file; slot is `BREAKFAST` / `LUNCH` / `DINNER` /
-`OTHER`. The plan is a fixed week, so only the weekday of `date` is used: the meal lands on
+must match a saved recipe or one in the same file; slot is `LUNCH` or `DINNER` (`BREAKFAST` and
+`OTHER` are still accepted, but the app no longer offers them). The plan is a fixed week, so only the weekday of `date` is used: the meal lands on
 that weekday in week 1. The authoritative shape is
 [`AgentImportRepository.kt`](app/src/main/java/com/lucca/ko/data/repo/AgentImportRepository.kt).
 
