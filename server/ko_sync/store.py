@@ -183,6 +183,27 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             updated_at INTEGER NOT NULL
         );
 
+        -- Budget. Same pattern as the gym rows: updated_at last-write-wins plus a `deleted`
+        -- tombstone. Amounts are integer cents in one currency. A limit's remote_id is its
+        -- (lower-cased) category, so there is one limit per category.
+        CREATE TABLE IF NOT EXISTS expenses (
+            remote_id TEXT PRIMARY KEY,
+            amount_cents INTEGER NOT NULL,
+            category TEXT NOT NULL DEFAULT '',
+            note TEXT,
+            spent_on TEXT NOT NULL,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS expenses_spent_on ON expenses (spent_on);
+
+        CREATE TABLE IF NOT EXISTS budget_limits (
+            remote_id TEXT PRIMARY KEY,
+            monthly_cents INTEGER NOT NULL,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+        );
+
         -- Phone-owned snapshots, replaced wholesale on every sync. Claude reads, never writes.
         CREATE TABLE IF NOT EXISTS supplements (
             name TEXT PRIMARY KEY COLLATE NOCASE,
@@ -570,6 +591,8 @@ _PRUNABLE = {
     "nutrition_entries": "updated_at",
     "supplement_logs": "updated_at",
     "body_metrics": "updated_at",
+    "expenses": "updated_at",
+    "budget_limits": "updated_at",
 }
 
 
@@ -638,7 +661,17 @@ _BODY_FIELDS = {
     "neckCm": "neck_cm",
     "note": "note",
 }
+_EXPENSE_FIELDS = {
+    "amountCents": "amount_cents",
+    "category": "category",
+    "note": "note",
+    "spentOn": "spent_on",
+    "deleted": "deleted",
+}
+_LIMIT_FIELDS = {"monthlyCents": "monthly_cents", "deleted": "deleted"}
 _GYM_TABLES = {
+    "expenses": ("remoteId", _EXPENSE_FIELDS),
+    "budget_limits": ("category", _LIMIT_FIELDS),  # a limit's id is its category
     "nutrition_entries": ("remoteId", _ENTRY_FIELDS),
     "supplement_logs": ("remoteId", _SUPPLEMENT_LOG_FIELDS),
     "body_metrics": ("date", _BODY_FIELDS),  # a body metric's id is its date
@@ -723,6 +756,26 @@ def body_metrics_between(start: str, end: str) -> list[dict]:
             (start, end),
         )
         return [_gym_row("body_metrics", r) for r in cur.fetchall()]
+
+
+# ---- Budget -------------------------------------------------------------------------------------
+
+
+def expenses_between(start: str, end: str, category: str | None = None) -> list[dict]:
+    """Live (non-deleted) expenses, oldest first. Category matches case-insensitively."""
+    with _cursor() as cur:
+        cur.execute(
+            "SELECT * FROM expenses WHERE deleted = 0 AND spent_on BETWEEN ? AND ? "
+            "AND (? IS NULL OR category = ? COLLATE NOCASE) ORDER BY spent_on, updated_at",
+            (start, end, category, category),
+        )
+        return [_gym_row("expenses", r) for r in cur.fetchall()]
+
+
+def live_limits() -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM budget_limits WHERE deleted = 0 ORDER BY remote_id")
+        return [_gym_row("budget_limits", r) for r in cur.fetchall()]
 
 
 # ---- Gym snapshots (phone-owned) ---------------------------------------------------------------

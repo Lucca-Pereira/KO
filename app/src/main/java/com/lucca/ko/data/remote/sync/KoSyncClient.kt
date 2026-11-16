@@ -113,6 +113,28 @@ data class BodyMetricWire(
     val updatedAt: Long,
 )
 
+@Serializable
+data class ExpenseWire(
+    val remoteId: String,
+    val amountCents: Long,
+    val category: String,
+    val note: String? = null,
+    /** ISO date, `YYYY-MM-DD`. */
+    val spentOn: String,
+    /** A tombstone from Claude: delete the local row with this remoteId. */
+    val deleted: Boolean = false,
+    val updatedAt: Long,
+)
+
+/** One limit per category (lower-case key). `deleted` = Claude removed it. */
+@Serializable
+data class BudgetLimitWire(
+    val category: String,
+    val monthlyCents: Long,
+    val deleted: Boolean = false,
+    val updatedAt: Long,
+)
+
 /** Phone-owned: sent whole every sync so Claude knows what can be ticked off. */
 @Serializable
 data class SupplementWire(
@@ -168,6 +190,8 @@ data class SyncPush(
     val supplementLogs: List<SupplementLogWire> = emptyList(),
     val bodyMetrics: List<BodyMetricWire> = emptyList(),
     val planView: PlanViewWire? = null,
+    val expenses: List<ExpenseWire> = emptyList(),
+    val budgetLimits: List<BudgetLimitWire> = emptyList(),
 )
 
 /** Every remoteId the phone currently has, per collection: how deletions made here reach the NAS
@@ -182,6 +206,9 @@ data class SyncPresent(
     val supplementLogs: List<String> = emptyList(),
     /** Dates — a body metric's key. */
     val bodyMetrics: List<String> = emptyList(),
+    val expenses: List<String> = emptyList(),
+    /** Lower-case categories: a limit's key. */
+    val budgetLimits: List<String> = emptyList(),
 )
 
 /** The phone-owned gym context the NAS keeps a copy of. */
@@ -207,6 +234,8 @@ data class SyncResponse(
     val supplementLogs: List<SupplementLogWire> = emptyList(),
     val bodyMetrics: List<BodyMetricWire> = emptyList(),
     val planView: PlanViewWire? = null,
+    val expenses: List<ExpenseWire> = emptyList(),
+    val budgetLimits: List<BudgetLimitWire> = emptyList(),
     val deleted: DeletedWire = DeletedWire(),
 )
 

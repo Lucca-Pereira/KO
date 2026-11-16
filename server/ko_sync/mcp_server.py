@@ -48,7 +48,10 @@ mcp = FastMCP(
         "get_supplements — it adds the diary line itself when the supplement has calories, so "
         "don't also log_food it), log_body_metrics. Fix mistakes with update_food_entry, "
         "delete_food_entry, unlog_supplement. Pass the user's local date when they say "
-        "'yesterday' etc.; omit it for today. The phone owns targets and supplement definitions."
+        "'yesterday' etc.; omit it for today. The phone owns targets and supplement definitions.\n"
+        "BUDGET - one currency, amounts as decimals. add_expense, list_expenses, update_expense, "
+        "delete_expense, set_budget_limit (0 removes), get_budget_summary (per category spent / "
+        "limit / remaining for a YYYY-MM month)."
     ),
 )
 
@@ -406,7 +409,6 @@ def _plan_entries(week: int | None) -> list[dict]:
     return [_describe_plan_entry(e) for e in store.plan_between(start, end)]
 
 
-
 def _find_recipe(ref: str) -> dict:
     ref = ref.strip()
     for r in store.all_recipes():
@@ -415,5 +417,6 @@ def _find_recipe(ref: str) -> dict:
     raise ToolError(f"No recipe {ref!r}. list_recipes shows what's saved.")
 
 
-# Registers the gym tools on the same server; imported last because it imports mcp from here.
-from . import mcp_gym  # noqa: E402, F401
+# Registers the gym and budget tools on the same server; imported last because they import mcp
+# from here.
+from . import mcp_budget, mcp_gym  # noqa: E402, F401

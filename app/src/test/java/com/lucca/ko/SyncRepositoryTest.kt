@@ -11,6 +11,8 @@ import com.lucca.ko.data.prefs.PlanViewRepository
 import com.lucca.ko.data.prefs.ProfileRepository
 import com.lucca.ko.data.prefs.SyncSettingsRepository
 import com.lucca.ko.data.remote.sync.BodyMetricWire
+import com.lucca.ko.data.remote.sync.BudgetLimitWire
+import com.lucca.ko.data.remote.sync.ExpenseWire
 import com.lucca.ko.data.remote.sync.DeletedWire
 import com.lucca.ko.data.remote.sync.KoSyncClient
 import com.lucca.ko.data.remote.sync.MealPlanEntryWire
@@ -23,6 +25,7 @@ import com.lucca.ko.data.remote.sync.ShoppingItemWire
 import com.lucca.ko.data.remote.sync.SupplementLogWire
 import com.lucca.ko.data.remote.sync.SyncResponse
 import com.lucca.ko.data.repo.BodyRepository
+import com.lucca.ko.data.repo.BudgetRepository
 import com.lucca.ko.data.repo.GymSyncRepository
 import com.lucca.ko.data.repo.MealPlanRepository
 import com.lucca.ko.data.repo.PantryRepository
@@ -118,6 +121,7 @@ class SyncRepositoryTest {
             mealPlanRepository = mealPlanRepository,
             gymSyncRepository = GymSyncRepository(db.nutritionDao(), db.supplementDao(), db.bodyDao()),
             bodyRepository = bodyRepository,
+            budgetRepository = BudgetRepository(db.budgetDao()),
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettings,
             koSyncClient = KoSyncClient(OkHttpClient()),
@@ -504,5 +508,93 @@ class SyncRepositoryTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse()))
         syncRepository.sync()
         assertTrue(server.takeRequest().body.readUtf8().contains("\"planView\":null"))
+    }
+
+    @Test
+    fun `a budget expense and limit are pushed with present lists and stamped`() = runTest {
+        configure()
+        val budget = BudgetRepository(db.budgetDao())
+        budget.saveExpense(null, 1250, "Food", "lunch", "2026-11-03")
+        budget.setLimit("Food", 40_000)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse(4_000_000_000_000L)))
+
+        val outcome = syncRepository.sync() as SyncOutcome.Success
+        assertEquals(2, outcome.pushed)
+
+        val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val push = body.getValue("push").jsonObject
+        val wire = push.getValue("expenses").jsonArray.single().jsonObject
+        assertEquals(1250, wire.getValue("amountCents").jsonPrimitive.content.toInt())
+        assertEquals("food", wire.getValue("category").jsonPrimitive.content)
+        assertEquals("2026-11-03", wire.getValue("spentOn").jsonPrimitive.content)
+        assertEquals(
+            "food",
+            push.getValue("budgetLimits").jsonArray.single().jsonObject.getValue("category").jsonPrimitive.content,
+        )
+        val present = body.getValue("present").jsonObject
+        assertEquals(1, present.getValue("expenses").jsonArray.size)
+        assertEquals("food", present.getValue("budgetLimits").jsonArray.single().jsonPrimitive.content)
+
+        assertTrue(db.budgetDao().pendingExpenses().isEmpty())
+        assertTrue(db.budgetDao().pendingLimits().isEmpty())
+    }
+
+    @Test
+    fun `budget rows pull in, and tombstones delete them`() = runTest {
+        configure()
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                json.encodeToString(
+                    SyncResponse.serializer(),
+                    SyncResponse(
+                        serverTime = 9000,
+                        expenses = listOf(
+                            ExpenseWire("e-1", 799, "Coffee", null, "2026-11-04", updatedAt = 8000),
+                            ExpenseWire("e-2", 100, "x", null, "2026-11-04", updatedAt = 8000),
+                        ),
+                        budgetLimits = listOf(BudgetLimitWire("Coffee", 2000, updatedAt = 8000)),
+                    ),
+                ),
+            ),
+        )
+        syncRepository.sync()
+        server.takeRequest()
+        assertEquals("coffee", db.budgetDao().expenseByRemoteId("e-1")?.category)
+        assertEquals(2000L, db.budgetDao().limitByCategory("coffee")?.monthlyCents)
+
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                json.encodeToString(
+                    SyncResponse.serializer(),
+                    SyncResponse(
+                        serverTime = 10_000,
+                        expenses = listOf(
+                            ExpenseWire("e-1", 799, "coffee", null, "2026-11-04", deleted = true, updatedAt = 9500),
+                        ),
+                        budgetLimits = listOf(BudgetLimitWire("coffee", 0, deleted = true, updatedAt = 9500)),
+                    ),
+                ),
+            ),
+        )
+        syncRepository.sync()
+        assertEquals(null, db.budgetDao().expenseByRemoteId("e-1"))
+        assertNotNull(db.budgetDao().expenseByRemoteId("e-2"))
+        assertEquals(null, db.budgetDao().limitByCategory("coffee"))
+    }
+
+    @Test
+    fun `a budget expense deleted on the phone drops out of present`() = runTest {
+        configure()
+        val budget = BudgetRepository(db.budgetDao())
+        budget.saveExpense(null, 500, "fun", null, "2026-11-05")
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse(1000)))
+        syncRepository.sync()
+        server.takeRequest()
+
+        budget.deleteExpense(db.budgetDao().getAllExpenses().single().id)
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emptyResponse(2000)))
+        syncRepository.sync()
+        val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals(0, body.getValue("present").jsonObject.getValue("expenses").jsonArray.size)
     }
 }

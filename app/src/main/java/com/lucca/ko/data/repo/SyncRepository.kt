@@ -50,6 +50,7 @@ class SyncRepository(
     private val mealPlanRepository: MealPlanRepository,
     private val gymSyncRepository: GymSyncRepository,
     private val bodyRepository: BodyRepository,
+    private val budgetRepository: BudgetRepository,
     private val recipeMerge: RecipeMerge,
     private val syncSettingsRepository: SyncSettingsRepository,
     private val koSyncClient: KoSyncClient,
@@ -85,6 +86,7 @@ class SyncRepository(
         }
 
         val gym = gymSyncRepository.pendingPush()
+        val budget = budgetRepository.pendingPush()
 
         // A never-changed layout (updatedAt 0) isn't sent: it must not clobber Claude's choice.
         val planView = planViewRepository.current().takeIf { it.updatedAt > 0 }
@@ -100,6 +102,8 @@ class SyncRepository(
             nutritionEntries = gymSyncRepository.presentEntryIds(),
             supplementLogs = gymSyncRepository.presentLogIds(),
             bodyMetrics = gymSyncRepository.presentBodyDates(),
+            expenses = budgetRepository.presentExpenseIds(),
+            budgetLimits = budgetRepository.presentLimitCategories(),
         )
 
         val response = try {
@@ -109,6 +113,7 @@ class SyncRepository(
                 SyncPush(
                     recipeWires, pantryWires, shoppingWires, planWires,
                     gym.entryWires, gym.logWires, gym.bodyWires, planView,
+                    budget.expenseWires, budget.limitWires,
                 ),
                 token,
                 present,
@@ -130,7 +135,8 @@ class SyncRepository(
         val justPushed = (recipeWires.map { it.remoteId } + pantryWires.map { it.remoteId } +
             shoppingWires.map { it.remoteId } + planWires.map { it.remoteId } +
             gym.entryWires.map { it.remoteId } + gym.logWires.map { it.remoteId } +
-            gym.bodyWires.map { it.date }).toSet()
+            gym.bodyWires.map { it.date } + budget.expenseWires.map { it.remoteId }).toSet()
+        val justPushedLimits = budget.limitWires.map { it.category }.toSet()
 
         val skipped = mutableListOf<String>()
         var pulled = 0
@@ -177,6 +183,17 @@ class SyncRepository(
                 .onFailure { skipped += "weigh-in ${wire.date}: ${it.message}" }
         }
 
+        response.expenses.filterNot { it.remoteId in justPushed }.forEach { wire ->
+            runCatching { budgetRepository.applyExpense(wire, response.serverTime) }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "expense ${wire.spentOn} ${wire.category}: ${it.message}" }
+        }
+        response.budgetLimits.filterNot { it.category in justPushedLimits }.forEach { wire ->
+            runCatching { budgetRepository.applyLimit(wire, response.serverTime) }
+                .onSuccess { pulled++ }
+                .onFailure { skipped += "budget limit \"${wire.category}\": ${it.message}" }
+        }
+
         response.planView?.let {
             planViewRepository.applyFromSync(PlanView(it.weeks, it.calendar, it.updatedAt, it.activeWeek))
         }
@@ -211,10 +228,12 @@ class SyncRepository(
         pendingShopping.forEach { shoppingRepository.stampSynced(it.id, response.serverTime) }
         pendingPlan.forEach { mealPlanRepository.stampSynced(it.id, response.serverTime) }
         gymSyncRepository.stamp(gym, response.serverTime)
+        budgetRepository.stamp(budget, response.serverTime)
         syncSettingsRepository.setLastSyncedAt(response.serverTime)
 
         val pushed = recipeWires.size + pantryWires.size + shoppingWires.size + planWires.size +
-            gym.entryWires.size + gym.logWires.size + gym.bodyWires.size
+            gym.entryWires.size + gym.logWires.size + gym.bodyWires.size +
+            budget.expenseWires.size + budget.limitWires.size
         return SyncOutcome.Success(pushed, pulled, skipped)
     }
 

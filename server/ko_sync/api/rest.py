@@ -36,6 +36,12 @@ async def sync(req: SyncRequest) -> SyncResponse:
         store.upsert_gym("supplement_logs", log.model_dump())
     for metric in req.push.bodyMetrics:
         store.upsert_gym("body_metrics", metric.model_dump())
+    for expense in req.push.expenses:
+        store.upsert_gym("expenses", expense.model_dump())
+    for limit in req.push.budgetLimits:
+        store.upsert_gym(
+            "budget_limits", {**limit.model_dump(), "category": limit.category.strip().lower()}
+        )
 
     if req.push.planView is not None:
         store.upsert_plan_view(req.push.planView.model_dump())
@@ -58,6 +64,10 @@ async def sync(req: SyncRequest) -> SyncResponse:
             store.prune_absent("supplement_logs", present.supplementLogs, since)
         if present.bodyMetrics is not None:
             store.prune_absent("body_metrics", present.bodyMetrics, since)
+        if present.expenses is not None:
+            store.prune_absent("expenses", present.expenses, since)
+        if present.budgetLimits is not None:
+            store.prune_absent("budget_limits", present.budgetLimits, since)
 
     server_time = store.now_millis()
     view = store.get_plan_view()
@@ -70,6 +80,8 @@ async def sync(req: SyncRequest) -> SyncResponse:
         nutritionEntries=store.gym_changed_since("nutrition_entries", req.lastSyncedAt),
         supplementLogs=store.gym_changed_since("supplement_logs", req.lastSyncedAt),
         bodyMetrics=store.gym_changed_since("body_metrics", req.lastSyncedAt),
+        expenses=store.gym_changed_since("expenses", req.lastSyncedAt),
+        budgetLimits=store.gym_changed_since("budget_limits", req.lastSyncedAt),
         planView=view if view["updatedAt"] > req.lastSyncedAt else None,
         deleted=store.deleted_since(req.lastSyncedAt),
     )

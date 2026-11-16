@@ -115,6 +115,26 @@ class BodyMetricWire(BaseModel):
     updatedAt: int
 
 
+class ExpenseWire(BaseModel):
+    remoteId: str
+    amountCents: int
+    """Integer cents (minor units), one currency, no conversion."""
+    category: str = ""
+    note: str | None = None
+    spentOn: str
+    """ISO date, YYYY-MM-DD."""
+    deleted: bool = False
+    updatedAt: int
+
+
+class BudgetLimitWire(BaseModel):
+    category: str
+    """The key: one limit per category (lower-cased by the server)."""
+    monthlyCents: int
+    deleted: bool = False
+    updatedAt: int
+
+
 class SupplementWire(BaseModel):
     name: str
     kind: str = "OTHER"
@@ -165,6 +185,8 @@ class SyncPush(BaseModel):
     nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
     supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
     bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)
+    expenses: list[ExpenseWire] = Field(default_factory=list)
+    budgetLimits: list[BudgetLimitWire] = Field(default_factory=list)
     planView: PlanViewWire | None = None
 
 
@@ -180,6 +202,8 @@ class SyncPresent(BaseModel):
     nutritionEntries: list[str] | None = None
     supplementLogs: list[str] | None = None
     bodyMetrics: list[str] | None = None
+    expenses: list[str] | None = None
+    budgetLimits: list[str] | None = None
     """None (from app versions before 0.11) means "not reported" — nothing pruned there."""
 
 
@@ -204,6 +228,8 @@ class SyncResponse(BaseModel):
     nutritionEntries: list[NutritionEntryWire] = Field(default_factory=list)
     supplementLogs: list[SupplementLogWire] = Field(default_factory=list)
     bodyMetrics: list[BodyMetricWire] = Field(default_factory=list)
+    expenses: list[ExpenseWire] = Field(default_factory=list)
+    budgetLimits: list[BudgetLimitWire] = Field(default_factory=list)
     planView: PlanViewWire | None = None
     """Set only when it changed since the phone's lastSyncedAt."""
     deleted: DeletedWire = Field(default_factory=DeletedWire)

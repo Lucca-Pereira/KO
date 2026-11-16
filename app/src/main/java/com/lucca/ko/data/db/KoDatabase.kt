@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import com.lucca.ko.data.db.dao.BodyDao
+import com.lucca.ko.data.db.dao.BudgetDao
 import com.lucca.ko.data.db.dao.FoodDao
 import com.lucca.ko.data.db.dao.NutritionDao
 import com.lucca.ko.data.db.dao.MealPlanDao
@@ -66,8 +67,10 @@ class Converters {
         BodyMetric::class,
         Supplement::class,
         SupplementLog::class,
+        Expense::class,
+        BudgetLimit::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -82,6 +85,7 @@ abstract class KoDatabase : RoomDatabase() {
     abstract fun bodyDao(): BodyDao
     abstract fun supplementDao(): SupplementDao
     abstract fun shoppingDao(): ShoppingDao
+    abstract fun budgetDao(): BudgetDao
 
     companion object {
         @Volatile private var instance: KoDatabase? = null

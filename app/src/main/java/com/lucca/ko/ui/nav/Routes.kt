@@ -23,6 +23,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object ShoppingRoute
 
+@Serializable data object BudgetRoute
+
 // ---- Reached from a top bar or a list -----------------------------------------------
 
 @Serializable data object SettingsRoute

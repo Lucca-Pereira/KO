@@ -3,6 +3,14 @@
 Upgrade notes per release. Install a new APK over the old one — don't uninstall — unless a
 note says otherwise.
 
+## v0.16.0 -- budget (needs server 0.6.0)
+
+- New **Budget** section in the menu: log expenses (amount, category, note, date), set a monthly
+  limit per category, and flip between months. Totals and per-category bars turn red when over.
+- Budget syncs with the NAS (server 0.6.0+): Claude can add, edit and delete expenses and set
+  limits from chat, and what you log here shows up there. Included in backups; older backups
+  still import. Database v12 (two new tables, no existing data touched).
+
 ## v0.15.0 -- web recipe import, pantry expiry, settings groups, update check
 
 - Settings regrouped into Sync, Data & backup and About. About has a **Check for updates** button (only when pressed) that asks GitHub for the latest release and links to the APK.

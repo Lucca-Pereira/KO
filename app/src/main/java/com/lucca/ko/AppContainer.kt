@@ -21,6 +21,7 @@ import com.lucca.ko.data.repo.RecipeRepository
 import com.lucca.ko.data.repo.RevisionRepository
 import com.lucca.ko.data.repo.ShoppingRepository
 import com.lucca.ko.data.repo.SupplementRepository
+import com.lucca.ko.data.repo.BudgetRepository
 import com.lucca.ko.data.repo.GymSyncRepository
 import com.lucca.ko.data.repo.SyncRepository
 import com.lucca.ko.data.seed.FoodSeedLoader
@@ -109,12 +110,15 @@ class AppContainer(context: Context) {
                 database.bodyDao(),
             ),
             bodyRepository = bodyRepository,
+            budgetRepository = budgetRepository,
             recipeMerge = recipeMerge,
             syncSettingsRepository = syncSettingsRepository,
             koSyncClient = koSyncClient,
             planViewRepository = planViewRepository,
         )
     }
+
+    val budgetRepository: BudgetRepository by lazy { BudgetRepository(database.budgetDao()) }
 
     val profileRepository: ProfileRepository by lazy { ProfileRepository(appContext) }
 

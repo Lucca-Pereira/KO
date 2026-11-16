@@ -61,6 +61,8 @@ class BackupRepository(
             bodyMetrics = db.bodyDao().getAll().map { it.toV2() },
             supplements = db.supplementDao().getAllSupplements().map { it.toV2() },
             supplementLog = db.supplementDao().getAllLogs().map { it.toV2() },
+            expenses = db.budgetDao().getAllExpenses().map { it.toV2() },
+            budgetLimits = db.budgetDao().getAllLimits().map { it.toV2() },
         )
         return json.encodeToString(KoBackupV2.serializer(), backup)
     }
@@ -94,6 +96,8 @@ class BackupRepository(
             db.nutritionDao().insertAll(backup.nutritionEntries.map { it.toEntity() })
             db.nutritionDao().insertAllTargets(backup.nutritionTargets.map { it.toEntity() })
             db.bodyDao().insertAll(backup.bodyMetrics.map { it.toEntity() })
+            db.budgetDao().insertAllExpenses(backup.expenses.map { it.toEntity() })
+            db.budgetDao().insertAllLimits(backup.budgetLimits.map { it.toEntity() })
         }
 
         settings.markNormalizationRepaired()

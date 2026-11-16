@@ -12,6 +12,7 @@ import com.lucca.ko.data.db.MIGRATION_6_7
 import com.lucca.ko.data.db.MIGRATION_7_8
 import com.lucca.ko.data.db.MIGRATION_8_9
 import com.lucca.ko.data.db.MIGRATION_10_11
+import com.lucca.ko.data.db.MIGRATION_11_12
 import com.lucca.ko.data.db.MIGRATION_9_10
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -603,6 +604,36 @@ class MigrationTest {
         migrateTo11().use { db ->
             assertEquals("Cebolla", db.text("SELECT name FROM pantry_items WHERE id = 1"))
             assertNull(db.longOrNull("SELECT expiresAt FROM pantry_items WHERE id = 1"))
+        }
+    }
+
+    private fun migrateTo12(): SupportSQLiteDatabase {
+        migrateTo11().close()
+        return helper.runMigrationsAndValidate(TEST_DB, 12, true, MIGRATION_11_12)
+    }
+
+    @Test
+    fun migrate11To12_validatesAgainstTheEntities() {
+        migrateTo12().close()
+    }
+
+    @Test
+    fun migrate11To12_addsEmptyBudgetTablesAndKeepsTheKitchen() {
+        migrateTo12().use { db ->
+            assertEquals(0, db.count("SELECT COUNT(*) FROM expenses"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM budget_limits"))
+            assertEquals("Cebolla", db.text("SELECT name FROM pantry_items WHERE id = 1"))
+            db.execSQL(
+                "INSERT INTO expenses (amountCents, category, spentOn, updatedAt, remoteId) " +
+                    "VALUES (1250, 'food', '2026-11-03', 1, 'e-1')",
+            )
+            val threw = runCatching {
+                db.execSQL(
+                    "INSERT INTO expenses (amountCents, category, spentOn, updatedAt, remoteId) " +
+                        "VALUES (1, 'food', '2026-11-03', 1, 'e-1')",
+                )
+            }.isFailure
+            assertTrue("expense remoteId must be unique", threw)
         }
     }
 }

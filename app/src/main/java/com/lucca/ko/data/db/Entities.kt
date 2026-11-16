@@ -296,3 +296,36 @@ data class ShoppingListItem(
     val syncedAt: Long? = null,    /** Free text such as "2 kg" or "3"; null when the item has no amount. */
     val quantity: String? = null,
 )
+
+/**
+ * One thing spent. Money is integer minor units (cents) end to end — never a float on storage.
+ * [category] is stored lower-case, which is also the key the NAS and the limits use.
+ *
+ * Deleting here just removes the row; the NAS learns of it because the remoteId drops out of the
+ * `present` list. [remoteId] is assigned before the first push, like the gym rows.
+ */
+@Entity(
+    tableName = "expenses",
+    indices = [Index(value = ["remoteId"], unique = true), Index(value = ["spentOn"])],
+)
+data class Expense(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val amountCents: Long,
+    val category: String,
+    val note: String? = null,
+    /** ISO date, `YYYY-MM-DD`. */
+    val spentOn: String,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val remoteId: String? = null,
+    /** Null means never pushed; pushed again whenever [updatedAt] is newer. */
+    val syncedAt: Long? = null,
+)
+
+/** A monthly spending cap for one category (lower-case key, one row per category). */
+@Entity(tableName = "budget_limits")
+data class BudgetLimit(
+    @PrimaryKey val category: String,
+    val monthlyCents: Long,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val syncedAt: Long? = null,
+)

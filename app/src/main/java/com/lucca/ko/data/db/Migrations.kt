@@ -533,8 +533,41 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+/**
+ * v11 -> v12: the budget. Two new tables, nothing existing is touched.
+ *
+ * `expenses` carries `remoteId`/`syncedAt`/`updatedAt` like the gym diary; `budget_limits` is
+ * keyed on its lower-case category, which is also its key on the NAS.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS expenses (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "amountCents INTEGER NOT NULL, " +
+                "category TEXT NOT NULL, " +
+                "note TEXT, " +
+                "spentOn TEXT NOT NULL, " +
+                "updatedAt INTEGER NOT NULL, " +
+                "remoteId TEXT, " +
+                "syncedAt INTEGER)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_remoteId ON expenses (remoteId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_spentOn ON expenses (spentOn)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS budget_limits (" +
+                "category TEXT NOT NULL, " +
+                "monthlyCents INTEGER NOT NULL, " +
+                "updatedAt INTEGER NOT NULL, " +
+                "syncedAt INTEGER, " +
+                "PRIMARY KEY(category))",
+        )
+    }
+}
+
 /** Every migration the database knows about, in order. */
 val KO_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+    MIGRATION_11_12,
 )

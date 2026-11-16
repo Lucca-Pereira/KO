@@ -1,6 +1,8 @@
 package com.lucca.ko.data.backup
 
 import com.lucca.ko.data.db.BodyMetric
+import com.lucca.ko.data.db.BudgetLimit
+import com.lucca.ko.data.db.Expense
 import com.lucca.ko.data.db.FoodItem
 import com.lucca.ko.data.db.FoodSource
 import com.lucca.ko.data.db.LogSlot
@@ -240,6 +242,26 @@ data class SupplementLogV2(
 )
 
 @Serializable
+data class ExpenseV2(
+    val id: Long = 0,
+    val amountCents: Long,
+    val category: String,
+    val note: String? = null,
+    val spentOn: String,
+    val updatedAt: Long = 0,
+    val remoteId: String? = null,
+    val syncedAt: Long? = null,
+)
+
+@Serializable
+data class BudgetLimitV2(
+    val category: String,
+    val monthlyCents: Long,
+    val updatedAt: Long = 0,
+    val syncedAt: Long? = null,
+)
+
+@Serializable
 data class KoBackupV2(
     val schema: Int = 2,
     val app: String = "KO Kitchen",
@@ -259,9 +281,17 @@ data class KoBackupV2(
     val bodyMetrics: List<BodyMetricV2> = emptyList(),
     val supplements: List<SupplementV2> = emptyList(),
     val supplementLog: List<SupplementLogV2> = emptyList(),
+    // The budget. Default empty, so a backup from before it existed still imports.
+    val expenses: List<ExpenseV2> = emptyList(),
+    val budgetLimits: List<BudgetLimitV2> = emptyList(),
 )
 
 // ---- Entity <-> DTO -----------------------------------------------------------------
+
+fun Expense.toV2() = ExpenseV2(id, amountCents, category, note, spentOn, updatedAt, remoteId, syncedAt)
+fun ExpenseV2.toEntity() = Expense(id, amountCents, category, note, spentOn, updatedAt, remoteId, syncedAt)
+fun BudgetLimit.toV2() = BudgetLimitV2(category, monthlyCents, updatedAt, syncedAt)
+fun BudgetLimitV2.toEntity() = BudgetLimit(category, monthlyCents, updatedAt, syncedAt)
 
 fun PantryItem.toV2() = PantryItemV2(
     id, name, normalizedName, category, status, quantity, note, searchName, updatedAt, remoteId, syncedAt,

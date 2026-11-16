@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Kitchen
@@ -44,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.lucca.ko.ui.budget.BudgetScreen
 import com.lucca.ko.ui.common.LocalOpenMenu
 import com.lucca.ko.ui.nutrition.FoodEditScreen
 import com.lucca.ko.ui.nutrition.NutritionHubScreen
@@ -79,12 +81,13 @@ private sealed class Dest(
     data object Groceries : Dest(ShoppingRoute, ShoppingRoute::class, "Groceries", Icons.Filled.ShoppingCart)
     data object Pantry : Dest(PantryRoute, PantryRoute::class, "Pantry", Icons.Filled.Kitchen)
     data object Meals : Dest(PlanRoute, PlanRoute::class, "Meals", Icons.Filled.CalendarMonth)
+    data object Budget : Dest(BudgetRoute, BudgetRoute::class, "Budget", Icons.Filled.AccountBalanceWallet)
     data object Gym : Dest(NutritionRoute, NutritionRoute::class, "Gym", Icons.Filled.FitnessCenter)
     data object Settings : Dest(SettingsRoute, SettingsRoute::class, "Settings", Icons.Filled.Settings)
 }
 
 private val menuDests = listOf(
-    Dest.Today, Dest.Recipes, Dest.Groceries, Dest.Pantry, Dest.Meals, Dest.Gym, Dest.Settings,
+    Dest.Today, Dest.Recipes, Dest.Groceries, Dest.Pantry, Dest.Meals, Dest.Budget, Dest.Gym, Dest.Settings,
 )
 
 @Composable
@@ -194,6 +197,8 @@ fun KoRoot() {
                     }
 
                     composable<ShoppingRoute> { ShoppingScreen() }
+
+                    composable<BudgetRoute> { BudgetScreen() }
 
                     composable<SettingsRoute> { SettingsScreen() }
 
