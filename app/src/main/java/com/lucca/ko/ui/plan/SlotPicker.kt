@@ -72,7 +72,7 @@ fun SlotPickerFields(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            MealSlot.entries.forEach { s ->
+            mealSlotChoices.forEach { s ->
                 FilterChip(selected = slot == s, onClick = { onSlot(s) }, label = { Text(s.label()) })
             }
         }

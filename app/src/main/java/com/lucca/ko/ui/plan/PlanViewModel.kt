@@ -37,6 +37,12 @@ data class PlanUiState(
     val activeWeek: Int = 1,
 )
 
+/**
+ * The slots offered when adding a meal. BREAKFAST and OTHER stay in the enum so older plans,
+ * backups and what Claude writes still load; they just aren't offered any more.
+ */
+val mealSlotChoices: List<MealSlot> = listOf(MealSlot.LUNCH, MealSlot.DINNER)
+
 fun MealSlot.label(): String = when (this) {
     MealSlot.BREAKFAST -> "Breakfast"
     MealSlot.LUNCH -> "Lunch"

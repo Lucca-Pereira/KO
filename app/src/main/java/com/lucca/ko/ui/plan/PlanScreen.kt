@@ -137,7 +137,7 @@ fun PlanScreen(
             ) {
                 Text("Add a meal", style = MaterialTheme.typography.titleLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MealSlot.entries.forEach { s ->
+                    mealSlotChoices.forEach { s ->
                         FilterChip(
                             selected = slot == s,
                             onClick = { slot = s },
