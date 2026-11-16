@@ -3,6 +3,10 @@
 Upgrade notes per release. Install a new APK over the old one — don't uninstall — unless a
 note says otherwise.
 
+## v0.16.1 -- meal picker
+
+- Adding a meal now offers only **Lunch** and **Dinner**. Existing Breakfast/Other meals are kept and still shown.
+
 ## v0.16.0 -- budget (needs server 0.6.0)
 
 - New **Budget** section in the menu: log expenses (amount, category, note, date), set a monthly
